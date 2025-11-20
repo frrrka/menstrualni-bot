@@ -574,36 +574,35 @@ async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --------- MAIN ---------
 
+# 1) Konverzacioni handler – GLOBALNO
+conv_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(button)],
+    states={
+        SET_CYCLE_LENGTH: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, set_cycle_length)
+        ],
+        SET_PERIOD_LENGTH: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, set_period_length)
+        ],
+        SET_LAST_START: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, set_last_start)
+        ],
+    },
+    fallbacks=[],
+    allow_reentry=True,
+)
 
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button)],
-        states={
-            SET_CYCLE_LENGTH: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_cycle_length)
-            ],
-            SET_PERIOD_LENGTH: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_period_length)
-            ],
-            SET_LAST_START: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_last_start)
-            ],
-        },
-        fallbacks=[],
-        allow_reentry=True,
-    )
-
+# 2) Aplikacija
 app = ApplicationBuilder().token(TOKEN).build()
 
+# 3) Registracija handlera
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("stop", stop))
 app.add_handler(conv_handler)
 app.add_handler(CallbackQueryHandler(button))
 
-
+# 4) Main: health server + bot
 def main():
     # pokreni health server u pozadini da Render vidi port
     threading.Thread(target=start_health_server, daemon=True).start()
