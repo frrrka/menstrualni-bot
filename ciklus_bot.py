@@ -1,6 +1,10 @@
 import logging
 from datetime import datetime, timedelta, time as dtime
 
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 import requests
 from telegram import (
     Update,
@@ -23,11 +27,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --------- KONFIGURACIJA ---------
-TOKEN = "8208168695:AAF28Qwwu0pOAR4hHwzELCUmIirPEZaPdqU"
+# -------- KONFIGURACIJA --------
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN env variable nije podesena!")
+
+PORT = int(os.getenv("PORT", "10000"))
 
 WEATHER_API_KEY = "42d427d7fbdd6ccdfbaa32673d9528ac"
 DEFAULT_CITY = "Belgrade,RS"
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+
+def start_health_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    print(f"[health] Listening on port {PORT}")
+    server.serve_forever()
 
 # --------- STANJA ZA CONVERSATION ---------
 (
@@ -575,12 +595,19 @@ def main():
         allow_reentry=True,
     )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(button))
+app = ApplicationBuilder().token(TOKEN).build()
 
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("stop", stop))
+app.add_handler(conv_handler)
+app.add_handler(CallbackQueryHandler(button))
+
+
+def main():
+    # pokreni health server u pozadini da Render vidi port
+    threading.Thread(target=start_health_server, daemon=True).start()
+    print("[bot] Starting Telegram bot...")
     app.run_polling()
 
 
