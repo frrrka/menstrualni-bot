@@ -1,15 +1,14 @@
 import logging
 import os
 import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime, timedelta, time as dtime
+from zoneinfo import ZoneInfo
+
 import requests
 import random
-from datetime import datetime, timedelta, time as dtime
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -17,82 +16,78 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
     ConversationHandler,
+    PicklePersistence,
     filters,
 )
 
-# Konfiguracija logovanja
+TZ = ZoneInfo("Europe/Belgrade")
+
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# -------- KONFIGURACIJA --------
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise RuntimeError("BOT_TOKEN env variable nije podesena!")
+    raise RuntimeError("BOT_TOKEN env variable nije podesena")
 
 PORT = int(os.getenv("PORT", "10000"))
 
-WEATHER_API_KEY = "42d427d7fbdd6ccdfbaa32673d9528ac" # Stvarni ključ (ili ga izvući iz env)
-DEFAULT_CITY = "Belgrade,RS"
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+DEFAULT_CITY = os.getenv("DEFAULT_CITY", "Belgrade,RS")
 
-# --------- STANJA ZA CONVERSATION ---------
+PERSISTENCE_PATH = os.getenv("PERSISTENCE_PATH", "bot_data.pkl")
+
+HOROSCOPE_SIGNS = [
+    "Ovan", "Bik", "Blizanac", "Rak", "Lav", "Devica",
+    "Vaga", "Škorpija", "Strelac", "Jarac", "Vodolija", "Ribe"
+]
+
 (
     SET_CYCLE_LENGTH,
     SET_PERIOD_LENGTH,
     SET_LAST_START,
-    SET_STAR_SIGN, # NOVO: Dodato stanje za horoskopski znak
+    SET_STAR_SIGN,
 ) = range(4)
 
-USER_DATA = {}
-
-HOROSCOPE_SIGNS = [
-    "Ovan", "Bik", "Blizanac", "Rak", "Lav", "Devica", 
-    "Vaga", "Škorpija", "Strelac", "Jarac", "Vodolija", "Ribe"
-]
-
-
-def HealthHandler(BaseHTTPRequestHandler):
-    """Jednostavan HTTP server za proveru statusa na Renderu."""
+class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"OK")
-
 
 def start_health_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
     print(f"[health] Listening on port {PORT}")
     server.serve_forever()
 
+def _job_name(chat_id: int) -> str:
+    return f"daily22_{chat_id}"
 
-def get_user(chat_id: int):
-    """Pristup ili inicijalizacija korisničkih podataka, uključujući horoskopski znak."""
-    if chat_id not in USER_DATA:
-        USER_DATA[chat_id] = {
-            "cycle_length": 28,
-            "period_length": 5,
-            "last_start": None,
-            "star_sign": None, # Inicijalno prazno
-        }
-    return USER_DATA[chat_id]
+def get_user(application, chat_id: int) -> dict:
+    data = application.chat_data.setdefault(chat_id, {})
+    data.setdefault("cycle_length", 28)
+    data.setdefault("period_length", 5)
+    data.setdefault("last_start", None)      # date
+    data.setdefault("star_sign", None)       # str
+    data.setdefault("daily22_enabled", False)
+    return data
 
+def main_menu_keyboard(user: dict | None = None) -> InlineKeyboardMarkup:
+    enabled = bool(user and user.get("daily22_enabled"))
+    daily_label = "🔕 Dnevna poruka 22:00, isključi" if enabled else "🔔 Dnevna poruka 22:00, uključi"
 
-def main_menu_keyboard():
-    """Glavni meni."""
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📅 Podesi ciklus", callback_data="setup")],
             [InlineKeyboardButton("📊 Moj ciklus", callback_data="status")],
-            [InlineKeyboardButton("🔔 Dnevna poruka 22:00", callback_data="reminders")],
+            [InlineKeyboardButton(daily_label, callback_data="toggle_daily22")],
             [InlineKeyboardButton("📍 Trenutni dan", callback_data="today")],
         ]
     )
 
-
-def mood_keyboard():
-    """Tastatura samo sa opcijama za raspoloženje (Inline)."""
+def mood_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
@@ -106,15 +101,35 @@ def mood_keyboard():
         ]
     )
 
+def sign_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    row = []
+    for i, sign in enumerate(HOROSCOPE_SIGNS, start=1):
+        row.append(InlineKeyboardButton(sign, callback_data=f"sign_{sign}"))
+        if i % 3 == 0:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("Preskoči", callback_data="sign_skip")])
+    return InlineKeyboardMarkup(rows)
 
-def calc_next_dates(user):
-    """Izračunava procenjene datume (sledeći period, plodni dani)."""
+def parse_date(text: str):
+    t = text.strip()
+    for fmt in ["%d.%m.%Y.", "%d.%m.%Y"]:
+        try:
+            return datetime.strptime(t, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def calc_next_dates(user: dict):
     if not user.get("last_start"):
         return None
 
     last_start = user["last_start"]
-    cycle = user["cycle_length"]
-    period_len = user["period_length"]
+    cycle = int(user["cycle_length"])
+    period_len = int(user["period_length"])
 
     next_start = last_start + timedelta(days=cycle)
     fertile_start = last_start + timedelta(days=cycle - 18)
@@ -128,21 +143,19 @@ def calc_next_dates(user):
         "period_end": period_end,
     }
 
-
-def get_cycle_state_for_today(user):
-    """Vraća trenutni dan u ciklusu i fazu."""
+def get_cycle_state_for_today(user: dict):
     if not user.get("last_start"):
         return None, None
 
-    today = datetime.now().date()
+    today = datetime.now(TZ).date()
     delta_days = (today - user["last_start"]).days
     if delta_days < 0:
         return None, None
 
     day_of_cycle = delta_days + 1
+    period_len = int(user.get("period_length", 5))
 
-    # Fazni proračun
-    if day_of_cycle <= user.get("period_length", 5):
+    if day_of_cycle <= period_len:
         phase = "menstrualna faza"
     elif day_of_cycle <= 13:
         phase = "folikularna faza"
@@ -153,410 +166,399 @@ def get_cycle_state_for_today(user):
 
     return day_of_cycle, phase
 
-
 def fetch_weather_category():
-    """Dohvata vremenske podatke i kategoriše utisak (suncano/kisovito/oblacno)."""
     if not WEATHER_API_KEY:
         return None, None
 
     try:
         url = (
-            f"https://api.openweathermap.org/data/2.5/weather?"
-            f"q={DEFAULT_CITY}&appid={WEATHER_API_KEY}&units=metric&lang=sr"
+            "https://api.openweathermap.org/data/2.5/weather"
+            f"?q={DEFAULT_CITY}&appid={WEATHER_API_KEY}&units=metric&lang=sr"
         )
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=6)
         data = resp.json()
 
         if "weather" not in data or not data["weather"]:
             return None, None
 
         main = data["weather"][0]["main"].lower()
+        desc = data["weather"][0].get("description", "")
 
         if "rain" in main or "drizzle" in main or "thunder" in main or "snow" in main:
-            return "kisovito", data["weather"][0].get("description", "")
+            return "kisovito", desc
         if "clear" in main:
-            return "suncano", data["weather"][0].get("description", "")
-        return "oblacno", data["weather"][0].get("description", "")
+            return "suncano", desc
+        return "oblacno", desc
+
     except Exception as e:
-        logger.warning(f"Greška pri čitanju vremena: {e}")
+        logger.warning(f"Greska pri citanju vremena {e}")
         return None, None
 
-
-def fetch_daily_horoscope(star_sign: str) -> str:
-    """Simulira preuzimanje dnevnog horoskopa na osnovu znaka."""
-    if not star_sign:
-        return "Tvoj horoskopski znak nije podešen. Idi na /start pa 'Podesi ciklus' da ga uneseš. 💫"
-
-    # Koristi tvoj biznis fokus (DoTheChange, Quality Content, Rewards)
-    messages = [
-        f"Zvezde ti šalju **ekstra energiju** za tvoje {star_sign.upper()} ambicije. Dan je idealan za pokretanje malih akcija (DoTheChange!) i za postavljanje jasnih ciljeva. Veruj u svoju viziju. 🚀",
-        f"Danas je ključan **mentalni fokus** za tvoj {star_sign.upper()} znak. Iskoristi mirnije sate za kreiranje Quality Content i analizu prethodnih rezultata (Past Rewards). Tvoj um je tvoje najjače oružje. 🧠",
-        f"Dragi {star_sign.upper()}, budi oprezniji sa troškovima energije i emocionalnim odlukama. Zvezde preporučuju da **sačuvaš snagu**, fokusiraš se na mir i odložiš velike Social Media Promocije. Polako. 🧘‍♀️",
-        f"Kreativna energija ti je danas pojačana! {star_sign.upper()}, ovo je idealan dan za Exclusive Video Recipes i plasiranje novih ideja. Tvoja strast inspiriše tvoj tim. Iskoristi to! ✨",
-    ]
-    
-    return random.choice(messages)
-
-
-# --------- TEKST BLOKOVI ---------
-
-
-def _weather_part(weather_cat: str) -> str:
-    """Generiše blok teksta o uticaju vremena."""
+def _weather_part(weather_cat: str | None) -> str:
     if weather_cat == "suncano":
-        return "☀️ *Vremenski utisak*\nDanas je bilo sunčano – takvi dani često daju malo više energije i lakše raspoloženje. Dozvoljeno je da i sunčan dan bude mirniji.\n\n"
-    elif weather_cat == "kisovito":
-        return "🌧️ *Vremenski utisak*\nKišni dani često povuku raspoloženje nadole, pojačaju umor i želju za mirom. Vreme ume ozbiljno da cimne i telo i glavu.\n\n"
-    elif weather_cat == "oblacno":
-        return "☁️ *Vremenski utisak*\nOblačni dani znaju da spuste fokus i motivaciju, kao da je i mozak malo zamućen. Sasvim je normalno ako si danas bila „usporenija“.\n\n"
+        return (
+            "☀️ *Vremenski utisak*\n"
+            "Sunce cesto podigne energiju, ali ne znaci da moras da budes na 100 posto.\n\n"
+        )
+    if weather_cat == "kisovito":
+        return (
+            "🌧️ *Vremenski utisak*\n"
+            "Kisni dan ume da spusti raspolozenje i fokus, normalno je ako si usporenija.\n\n"
+        )
+    if weather_cat == "oblacno":
+        return (
+            "☁️ *Vremenski utisak*\n"
+            "Oblacno cesto donese taj tihi umor, ne dramatizuj, samo prilagodi tempo.\n\n"
+        )
     return ""
-
 
 def _phase_part(phase: str) -> str:
-    """Generiše blok teksta o hormonalnoj fazi."""
     if "menstrualna" in phase:
-        return "🩸 *Menstrualna faza*\nMenstrualna faza^info intenzivno izbacuje sluznicu, mogu se javljati bolovi i pad energije. Normalno je da si sporija i osetljivija. "
-
-[Image of 4 stages of menstrual cycle with hormone levels]
-\n\n"
+        return (
+            "🩸 *Menstrualna faza*\n"
+            "Moguci su grcevi, pad energije, veca osetljivost, spusti gas bez krivice.\n\n"
+        )
     if "folikularna" in phase:
-        return "🌱 *Folikularna faza*\nEnergija i izdržljivost često rastu, telo se podiže i obnavlja sluznica. Osećaš se lakše u glavi i spremnije za akciju.\n\n"
+        return (
+            "🌱 *Folikularna faza*\n"
+            "Energija cesto raste, lakse se uvodi rutina i pokret.\n\n"
+        )
     if "ovulacija" in phase:
-        return "💛 *Ovulacija*\nOvo je često „peak“ faza – više snage, više samopouzdanja, više želje za pokretom. Telo je biološki najspremnije.\n\n"
-    if "luteinska" in phase:
-        return "🌙 *Luteinska faza*\nDruga polovina ciklusa, gde mnoge žene osećaju veću iscrpljenost, pad motivacije, zadržavanje vode i PMS. Promene raspoloženja su česte.\n\n"
-    return ""
-
+        return (
+            "💛 *Ovulacija*\n"
+            "Cesto peak faza, vise energije i samopouzdanja, dobar dan za akciju.\n\n"
+        )
+    return (
+        "🌙 *Luteinska faza*\n"
+        "Cesce su natecenost, promena raspolozenja i veca glad, hormoni rade svoje.\n\n"
+    )
 
 def _tip_part(phase: str) -> str:
-    """Generiše blok teksta sa praktičnim savetom."""
     if "menstrualna" in phase:
-        return "✅ *Praktičan savet*\nSmanji očekivanja od sebe. Fokusiraj se na toplu hranu, lagano kretanje (šetnja, istezanje) i kvalitetan san. Ovo je vreme kada je skroz ok da spustiš gas."
+        return "✅ *Savet*\nTopla hrana, voda, lagana setnja, san, i manje pritiska na sebe."
     if "folikularna" in phase:
-        return "✅ *Praktičan savet*\nIskoristi rast energije da uvedeš jednu zdravu naviku – trening, šetnju, bolji plan obroka. Telo sada voli pokret."
+        return "✅ *Savet*\nUvedi jednu naviku, trening, setnja ili plan obroka, telo sada voli tempo."
     if "ovulacija" in phase:
-        return "✅ *Praktičan savet*\nOdličan period za jače treninge, društvene aktivnosti, bitne sastanke i odluke. Iskoristi viši nivo samopouzdanja."
-    # luteinska
-    return "✅ *Praktičan savet*\nOčekuj uspone i padove. Pomaže da obroci budu bogatiji proteinom i vlaknima, da ne preskačeš obroke i da sebi daš više razumevanja umesto kritike. PMS je realan faktor."
+        return "✅ *Savet*\nJaci trening, bitne odluke, izlazak iz zone komfora, dobra energija."
+    return "✅ *Savet*\nProteini i vlakna, redovni obroci, i vise razumevanja prema sebi."
 
+def fetch_daily_horoscope(star_sign: str | None) -> str:
+    if not star_sign:
+        return "Ako hoces horoskop u poruci, podesi znak kroz Podesi ciklus. 💫"
 
-def build_today_overview(day_of_cycle: int, phase: str, weather_cat: str, star_sign: str) -> str:
-    """Sastavlja kompletan dnevni izveštaj (Ciklus + Vreme + Horoskop)."""
-    base = (
-        f"📍 *Danas je {day_of_cycle}. dan od početka tvog ciklusa* "
-        f"(_{phase}_).\n\n"
-    )
-    weather_part = _weather_part(weather_cat)
-    phase_part = _phase_part(phase)
-    tip_part = _tip_part(phase)
-    horoscope_part = fetch_daily_horoscope(star_sign)
+    messages = [
+        f"🔮 *Horoskop*\nZa *{star_sign}*, danas je dan za jednu malu ali jasnu odluku. Ne razvlaci, preseci.",
+        f"🔮 *Horoskop*\n*{star_sign}* ima dobru energiju za zatvaranje obaveza. Zavrsis jednu stvar, i mir u glavi skoci.",
+        f"🔮 *Horoskop*\nZa *{star_sign}*, bolje malo manje ljudi, malo vise fokusa. Mir ti danas vredi zlata.",
+        f"🔮 *Horoskop*\n*{star_sign}*, kreativnost ti je jaca, iskoristi to za nesto konkretno, ne samo za mastanje.",
+    ]
+    return random.choice(messages)
 
-    closing = (
-        "\n\n🤍 Ovo nije „običan“ dan – ima svoj hormonalni i kosmički kontekst. "
-        "Kada razumeš šta telo radi, lakše prestaneš da ga kriviš i počneš da sarađuješ sa njim."
-    )
+def build_today_overview(day_of_cycle: int, phase: str, weather_cat: str | None, star_sign: str | None) -> str:
+    base = f"📍 *Danas je {day_of_cycle}. dan ciklusa* (_{phase}_)\n\n"
+    closing = "\n\n🤍 Kad razumes kontekst, lakse prestanes da se krivis i pocnes da saradjujes sa sobom."
+    horoscope = fetch_daily_horoscope(star_sign)
+    return base + _weather_part(weather_cat) + _phase_part(phase) + horoscope + "\n\n" + _tip_part(phase) + closing
 
-    full_report = base + weather_part + phase_part
-    full_report += "\n---\n"
-    full_report += f"🔮 *Dnevni Horoskop za {star_sign if star_sign else 'tebe'}*\n{horoscope_part}"
-    full_report += "\n---\n"
-    full_report += tip_part + closing
-    
-    return full_report
-
-
-def build_mood_message(mood: str, day_of_cycle: int, phase: str, weather_cat: str) -> str:
-    """Sastavlja poruku o raspoloženju (bez horoskopa, fokus na ciklusu)."""
-    header = (
-        f"🧠 *Tvoj dnevni uvid* \n"
-        f"Danas je {day_of_cycle}. dan od početka tvog ciklusa (_{phase}_).\n\n"
-    )
-    weather_part = _weather_part(weather_cat)
+def build_mood_message(mood: str, day_of_cycle: int, phase: str, weather_cat: str | None) -> str:
+    header = f"🧠 *Tvoj dnevni uvid*\nDanas je {day_of_cycle}. dan ciklusa (_{phase}_)\n\n"
+    weather = _weather_part(weather_cat)
     phase_part = _phase_part(phase)
 
-    # ... (skraćeno, koristi se samo blok za raspoloženje, faza i savet)
-    
     if mood == "sjajan":
-        mood_part = "🌟 *Raspoloženje: Sjajan dan*\nBravo. Iscurila si energiju ciklusa i vremena u produktivnost. Nisi imala „savršен“ dan, imala si dobar dan za sebe – i to gradi stabilnost."
+        mood_part = "🌟 *Sjajan dan*\nZapamti sta je radilo, san, hrana, ljudi, pokret, i ponovi sutra."
     elif mood == "onako":
-        mood_part = "😐 *Raspoloženje: Onako dan*\nSivi, „ni tamo ni ovamo“ dani su najopasniji. Nije bilo katastrofe, ali nije bilo ni pobede. Koja je jedna mala stvar koju sutra možeš uraditi bolje? Jedan korak je dovoljan."
+        mood_part = "😐 *Onako dan*\nJedna mala korekcija sutra, voda, setnja, obrok, i dan ide u plus."
     elif mood == "tezak":
-        mood_part = "😣 *Raspoloženje: Težak dan*\nTežak dan ne znači da si slaba. Normalno je da se energija lomi. Umesto da gledaš samo šta nije uspelo, primeti šta ipak jeste: ispoštovala si obrok, došla do kraja obaveza, našla trenutak za odmor. Ponosna si na male pobede."
-    else:  # stresno
-        mood_part = "🔥 *Raspoloženje: Stresan dan*\nStresan dan iscedi i telo i mozak. Ti nisi tvoj stres. Ti si osoba koja je sve to izgurala do kraja dana. Nađi jednu lekciju iz dana i jednu stvar na kojoj možeš da zahvališ sebi. Sutra ne krećeš od nule."
+        mood_part = "😣 *Tezak dan*\nNe znaci da si slaba, znaci da je bilo tesko. Sutra spusti gas i cuvaj energiju."
+    else:
+        mood_part = "🔥 *Stresan dan*\nStres nije tvoj identitet. Sutra izbaci jednu stvar koja te gazi."
 
-    tip_part = _tip_part(phase)
+    closing = "\n\n🤍 Hvala ti sto si prijavila dan, to je briga o sebi, ne glupost."
+    return header + weather + phase_part + mood_part + "\n\n" + _tip_part(phase) + closing
 
-    closing = "\n\n🤍 Hvala ti što si stala i prijavila kako ti je danas. To je već jedan vid brige o sebi."
-
-    return header + weather_part + phase_part + "\n\n" + mood_part + "\n\n" + tip_part + closing
-
-
-# --------- JOB 22:00 (Sada šalje automatsku poruku + opciju unosa raspoloženja) ---------
-
-
-def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE):
-    job_queue = context.application.job_queue
-    if job_queue is None:
+def remove_job_if_exists(job_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    jq = context.application.job_queue
+    if jq is None:
         return False
-    current_jobs = job_queue.get_jobs_by_name(name)
-    if not current_jobs:
+    jobs = jq.get_jobs_by_name(job_name)
+    if not jobs:
         return False
-    for job in current_jobs:
-        job.schedule_removal()
+    for j in jobs:
+        j.schedule_removal()
     return True
 
-
-async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
-    """Šalje kompletan dnevni izveštaj i dugmad za raspoloženje."""
+async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
-    user = get_user(chat_id)
-
-    day_of_cycle, phase = get_cycle_state_for_today(user)
-    star_sign = user.get("star_sign")
-    
-    if day_of_cycle is None or star_sign is None:
-        text = (
-            "⏰ Dnevna poruka 22:00\n\n"
-            "Potrebno je da kompletno podesiš ciklus *i* horoskopski znak. \n"
-            "Klikni na /start pa '📅 Podesi ciklus' i unesi sve podatke."
-        )
-        await context.bot.send_message(chat_id, text=text, parse_mode="Markdown")
-        return
-
-    # Sastavljanje kompletnog izveštaja: Ciklus + Vreme + Horoskop
-    weather_cat, _ = fetch_weather_category()
-    overview_text = build_today_overview(day_of_cycle, phase, weather_cat, star_sign)
-    
-    # Upit za raspoloženje
-    question = "\n\n_—\nDa li želiš da uneseš kako ti je prošao dan? Izaberi najbližu opciju:_"
-
-    final_text = overview_text + question
-    
-    # Slanje dnevnog uvida PLUS dugmići za raspoloženje
-    await context.bot.send_message(
-        chat_id, 
-        text=final_text, 
-        reply_markup=mood_keyboard(), 
-        parse_mode="Markdown"
-    )
-
-
-# --------- KOMANDE ---------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    get_user(chat_id)
-
-    text = (
-        "Hej, ja sam tvoj lični bot za hormonalni i astro uvid. 🤖🩸💫\n\n"
-        "Mogu da ti:\n"
-        "• pratim ciklus\n"
-        "• šaljem DNEVNU PORUKU u 22:00 sa KOMPLETNOM ANALIZOM (ciklus + vreme + horoskop)\n"
-        "• kroz „📍 Trenutni dan“ objasnim šta se dešava u tvom telu\n\n"
-        "Izaberi opciju:"
-    )
-
-    await update.message.reply_text(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-
-# ... (help_command, stop – ostaju nepromenjeni)
-
-
-# --------- CALLBACK DUGMAD ---------
-
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat_id
-    data = query.data
-
-    # izbor raspoloženja
-    if data.startswith("mood_"):
-        mood_key = data.split("_", 1)[1]
-        await handle_mood_response(query, context, mood_key)
-        return ConversationHandler.END
-
-    if data == "setup":
-        # Umesto samo teksta, resetujemo konverzaciju
-        await query.edit_message_text(
-            "Unesi dužinu ciklusa u danima (20-45), na primer 28:", reply_markup=None
-        )
-        return SET_CYCLE_LENGTH
-
-    # ... (status, reminders, today – ostaju nepromenjeni, ali će today sada zvati build_today_overview sa horoskopom)
-    if data == "today":
-        user = get_user(chat_id)
-        day_of_cycle, phase = get_cycle_state_for_today(user)
-        star_sign = user.get("star_sign")
-        
-        if day_of_cycle is None or star_sign is None:
-            text = "Nemam sve podatke (ciklus i horoskop). Klikni na '📅 Podesi ciklus'."
-        else:
-            weather_cat, _ = fetch_weather_category()
-            text = build_today_overview(day_of_cycle, phase, weather_cat, star_sign)
-        
-        await query.edit_message_text(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-        return ConversationHandler.END
-
-
-async def handle_mood_response(query, context: ContextTypes.DEFAULT_TYPE, mood_key: str):
-    """Obrada unosa raspoloženja i slanje finalne analize."""
-    chat_id = query.message.chat_id
-    user = get_user(chat_id)
+    user = get_user(context.application, chat_id)
 
     day_of_cycle, phase = get_cycle_state_for_today(user)
     if day_of_cycle is None:
-        await query.edit_message_text(
-            "Nemam podatke o ciklusu. Idi na /start pa '📅 Podesi ciklus'.",
-            reply_markup=main_menu_keyboard(),
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏰ 22:00 poruka\nNemam datum ciklusa, udji na Podesi ciklus i unesi datum.",
+            reply_markup=main_menu_keyboard(user),
         )
         return
 
     weather_cat, _ = fetch_weather_category()
-    text = build_mood_message(mood_key, day_of_cycle, phase, weather_cat)
-    
-    # Dodatak glavnog menija nakon unosa raspoloženja
-    await query.edit_message_text(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+    text = build_today_overview(day_of_cycle, phase, weather_cat, user.get("star_sign"))
 
+    tail = "\n\nAko zelis, prijavi raspolozenje jednim klikom."
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=text + tail,
+        reply_markup=mood_keyboard(),
+        parse_mode="Markdown",
+    )
 
-# --------- UNOS CIKLUSA I HOROSKOPA ---------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(context.application, chat_id)
 
+    text = (
+        "Hej, ja sam bot za ciklus, vreme i mali astro dodatak. 🤖🩸💫\n\n"
+        "Ako ukljucis dnevnu poruku u 22:00, saljem automatski uvid, i nudim dugmad za raspolozenje.\n\n"
+        "Izaberi opciju."
+    )
+    await update.message.reply_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "/start, meni\n/stop, ugasi dnevnu poruku u 22:00",
+    )
+
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user = get_user(context.application, chat_id)
+
+    job_name = _job_name(chat_id)
+    removed = remove_job_if_exists(job_name, context)
+
+    user["daily22_enabled"] = False
+    await update.message.reply_text(
+        "Ugaseno, nema vise poruke u 22:00." if removed else "Nije bilo ukljuceno.",
+        reply_markup=main_menu_keyboard(user),
+    )
+
+async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat.id
+    user = get_user(context.application, chat_id)
+    data = query.data
+
+    if data.startswith("mood_"):
+        mood_key = data.split("_", 1)[1]
+        day_of_cycle, phase = get_cycle_state_for_today(user)
+        if day_of_cycle is None:
+            await query.edit_message_text(
+                "Nemam datum ciklusa, udji na Podesi ciklus i unesi datum.",
+                reply_markup=main_menu_keyboard(user),
+            )
+            return ConversationHandler.END
+
+        weather_cat, _ = fetch_weather_category()
+        text = build_mood_message(mood_key, day_of_cycle, phase, weather_cat)
+        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+        return ConversationHandler.END
+
+    if data == "status":
+        info = calc_next_dates(user)
+        if not user.get("last_start"):
+            text = "Nemam datum poslednje menstruacije, udji na Podesi ciklus i unesi datum."
+        else:
+            text = (
+                f"📊 *Trenutne postavke*\n\n"
+                f"• Duzina ciklusa, *{user['cycle_length']}* dana\n"
+                f"• Trajanje menstruacije, *{user['period_length']}* dana\n"
+                f"• Poslednji pocetak, *{user['last_start'].strftime('%d.%m.%Y.')}*\n"
+            )
+            if user.get("star_sign"):
+                text += f"• Horoskopski znak, *{user['star_sign']}*\n"
+            if info:
+                text += (
+                    "\n📆 *Procene*\n"
+                    f"• Sledeca menstruacija oko, *{info['next_start'].strftime('%d.%m.%Y.')}*\n"
+                    f"• Plodni dani, *{info['fertile_start'].strftime('%d.%m.%Y.')}* do *{info['fertile_end'].strftime('%d.%m.%Y.')}*\n"
+                    f"• Kraj menstruacije, *{info['period_end'].strftime('%d.%m.%Y.')}*\n\n"
+                    "_Sve su ovo procene._"
+                )
+        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+        return ConversationHandler.END
+
+    if data == "today":
+        day_of_cycle, phase = get_cycle_state_for_today(user)
+        if day_of_cycle is None:
+            text = "Nemam datum ciklusa, udji na Podesi ciklus i unesi datum."
+        else:
+            weather_cat, _ = fetch_weather_category()
+            text = build_today_overview(day_of_cycle, phase, weather_cat, user.get("star_sign"))
+        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+        return ConversationHandler.END
+
+    if data == "toggle_daily22":
+        jq = context.application.job_queue
+        job_name = _job_name(chat_id)
+
+        if user.get("daily22_enabled"):
+            remove_job_if_exists(job_name, context)
+            user["daily22_enabled"] = False
+            await query.edit_message_text("Dnevna poruka u 22:00 je iskljucena.", reply_markup=main_menu_keyboard(user))
+            return ConversationHandler.END
+
+        if jq is not None:
+            jq.run_daily(
+                daily22_job,
+                time=dtime(hour=22, minute=0, tzinfo=TZ),
+                name=job_name,
+                chat_id=chat_id,
+            )
+        user["daily22_enabled"] = True
+        await query.edit_message_text("Dnevna poruka u 22:00 je ukljucena.", reply_markup=main_menu_keyboard(user))
+        return ConversationHandler.END
+
+    return ConversationHandler.END
+
+async def setup_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Unesi duzinu ciklusa u danima, 20 do 45, na primer 28:")
+    return SET_CYCLE_LENGTH
 
 async def set_cycle_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (logika ostaje ista)
-    # ... (vraća SET_PERIOD_LENGTH)
-    pass # Implementacija je ista kao u prethodnoj verziji
+    chat_id = update.effective_chat.id
+    user = get_user(context.application, chat_id)
+
+    try:
+        value = int(update.message.text.strip())
+        if value < 20 or value > 45:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("Upisi broj dana izmedju 20 i 45, na primer 28:")
+        return SET_CYCLE_LENGTH
+
+    user["cycle_length"] = value
+    await update.message.reply_text("Ok, sada upisi koliko dana traje menstruacija, 2 do 10, na primer 5:")
+    return SET_PERIOD_LENGTH
 
 async def set_period_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (logika ostaje ista)
-    # ... (vraća SET_LAST_START)
-    pass # Implementacija je ista kao u prethodnoj verziji
+    chat_id = update.effective_chat.id
+    user = get_user(context.application, chat_id)
 
+    try:
+        value = int(update.message.text.strip())
+        if value < 2 or value > 10:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("Upisi broj dana izmedju 2 i 10, na primer 5:")
+        return SET_PERIOD_LENGTH
 
-def parse_date(text: str):
-    # ... (funkcija ostaje ista)
-    pass # Implementacija je ista kao u prethodnoj verziji
-
+    user["period_length"] = value
+    await update.message.reply_text("Super, posalji datum poslednje menstruacije, format dd.mm.gggg. na primer 21.11.2025.")
+    return SET_LAST_START
 
 async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Zapisuje datum i traži horoskopski znak."""
     chat_id = update.effective_chat.id
-    user = get_user(chat_id)
+    user = get_user(context.application, chat_id)
 
     date_obj = parse_date(update.message.text)
     if not date_obj:
-        await update.message.reply_text(
-            "Ne mogu da pročitam datum. Pošalji ga u formatu dd.mm.gggg. na primer 21.11.2025."
-        )
+        await update.message.reply_text("Ne mogu da procitam datum, posalji dd.mm.gggg. na primer 21.11.2025.")
         return SET_LAST_START
 
     user["last_start"] = date_obj
-    
-    # Sada tražimo horoskopski znak (NOVO!)
-    keyboard = [[InlineKeyboardButton(sign, callback_data=f"sign_{sign}")] for sign in HOROSCOPE_SIGNS]
-    reply_markup = InlineKeyboardMarkup(keyboard, row_width=3) # Lepši prikaz
-    
-    await update.message.reply_text(
-        "Zabeležio sam datum. 📌\n\nSada mi reci koji si horoskopski znak, da ti šaljem dnevnu astro-prognozu:", 
-        reply_markup=reply_markup
-    )
-    return SET_STAR_SIGN # Prelaz na novo stanje
 
+    await update.message.reply_text(
+        "Zabelezio sam datum. Sada izaberi horoskopski znak, ili preskoci.",
+        reply_markup=sign_keyboard(),
+    )
+    return SET_STAR_SIGN
 
 async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Zapisuje horoskopski znak i završava podešavanje."""
     query = update.callback_query
     await query.answer()
-    chat_id = query.message.chat_id
-    user = get_user(chat_id)
-    data = query.data
-    
-    sign = data.split("_", 1)[1] # npr. "Ovan"
-    user["star_sign"] = sign
-    
-    # Prikupljanje finalnih informacija i završetak
+    chat_id = query.message.chat.id
+    user = get_user(context.application, chat_id)
+
+    if query.data == "sign_skip":
+        user["star_sign"] = None
+    else:
+        user["star_sign"] = query.data.split("_", 1)[1]
+
     info = calc_next_dates(user)
-    text = (
-        f"✅ *Podešavanje završeno!* Tvoj znak je *{sign}*.\n\n"
-        f"Sledeća menstruacija je okvirno oko: {info['next_start'].strftime('%d.%m.%Y.')}\n"
-        f"Plodni dani: {info['fertile_start'].strftime('%d.%m.%Y.')} - {info['fertile_end'].strftime('%d.%m.%Y.')}\n\n"
-        "Spremni smo! Svako veče u 22:00 dobijaš kompletan izveštaj. ❤️"
-    )
-    
-    await query.edit_message_text(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-    return ConversationHandler.END # Završetak konverzacije
+    sign_txt = user["star_sign"] if user["star_sign"] else "nije podeseno"
 
+    text = "✅ *Podesavanje zavrseno*\n\n"
+    if info:
+        text += (
+            f"• Znak, *{sign_txt}*\n"
+            f"• Sledeca menstruacija oko, *{info['next_start'].strftime('%d.%m.%Y.')}*\n"
+            f"• Plodni dani, *{info['fertile_start'].strftime('%d.%m.%Y.')}* do *{info['fertile_end'].strftime('%d.%m.%Y.')}*\n"
+        )
+    text += "\nAko zelis automatsku poruku u 22:00, ukljuci je iz menija."
+    await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+    return ConversationHandler.END
 
-# --------- MAIN REGISTRATION ---------
+async def post_init(application):
+    jq = application.job_queue
+    if jq is None:
+        return
 
-# 1) Konverzacioni handler – GLOBALNO
-conv_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(button, pattern='^setup$')],
-    states={
-        SET_CYCLE_LENGTH: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, set_cycle_length)
-        ],
-        SET_PERIOD_LENGTH: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, set_period_length)
-        ],
-        SET_LAST_START: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, set_last_start)
-        ],
-        SET_STAR_SIGN: [ # NOVO: Dodajemo handler za horoskop
-             CallbackQueryHandler(set_star_sign, pattern='^sign_')
-        ],
-    },
-    fallbacks=[CommandHandler("start", start)],
-    allow_reentry=True,
-)
+    for chat_id, data in application.chat_data.items():
+        try:
+            if not data.get("daily22_enabled"):
+                continue
 
-# 2) Aplikacija
-app = ApplicationBuilder().token(TOKEN).build()
+            cid = int(chat_id)
+            job_name = _job_name(cid)
 
-# 3) Registracija handlera
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("stop", stop))
-app.add_handler(conv_handler)
-# Posebno registrujemo CallbackQueryHandler za sve što nije 'setup' i nije 'sign_'
-app.add_handler(CallbackQueryHandler(button))
+            for j in jq.get_jobs_by_name(job_name):
+                j.schedule_removal()
 
-# 4) Main: health server + bot
+            jq.run_daily(
+                daily22_job,
+                time=dtime(hour=22, minute=0, tzinfo=TZ),
+                name=job_name,
+                chat_id=cid,
+            )
+        except Exception as e:
+            logger.exception(f"post_init reschedule greska {e}")
+
 def main():
     threading.Thread(target=start_health_server, daemon=True).start()
-    print("[bot] Starting Telegram bot...")
+
+    persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
+
+    app = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .persistence(persistence)
+        .post_init(post_init)
+        .build()
+    )
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(setup_entry, pattern="^setup$")],
+        states={
+            SET_CYCLE_LENGTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_cycle_length)],
+            SET_PERIOD_LENGTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_period_length)],
+            SET_LAST_START: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_last_start)],
+            SET_STAR_SIGN: [CallbackQueryHandler(set_star_sign, pattern="^(sign_.*|sign_skip)$")],
+        },
+        fallbacks=[CommandHandler("start", start)],
+        allow_reentry=True,
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stop", stop))
+
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(cb_router))
+
     app.run_polling()
 
-
 if __name__ == "__main__":
-    # Mock implementacija zbog kompleksnosti celog koda:
-    
-    async def set_cycle_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        chat_id = update.effective_chat.id
-        user = get_user(chat_id)
-        try:
-            value = int(update.message.text.strip())
-            if not 20 <= value <= 45: raise ValueError
-        except ValueError:
-            await update.message.reply_text("Upiši broj dana između 20 i 45:")
-            return SET_CYCLE_LENGTH
-        user["cycle_length"] = value
-        await update.message.reply_text("OK. Sada upiši koliko dana obično traje menstruacija (2-10):")
-        return SET_PERIOD_LENGTH
-
-    async def set_period_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        chat_id = update.effective_chat.id
-        user = get_user(chat_id)
-        try:
-            value = int(update.message.text.strip())
-            if not 2 <= value <= 10: raise ValueError
-        except ValueError:
-            await update.message.reply_text("Upiši broj dana između 2 i 10:")
-            return SET_PERIOD_LENGTH
-        user["period_length"] = value
-        await update.message.reply_text("Super. Sada mi pošalji datum kada je poslednja menstruacija počela. Format: dd.mm.gggg. na primer 21.11.2025.")
-        return SET_LAST_START
-
     main()
