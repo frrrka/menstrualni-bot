@@ -124,37 +124,62 @@ def hormone_hack_block() -> str:
         "Nemoj cekati da se osecas bolje, preuzmi stvar u svoje ruke 💥"
     )
 
-# === PRAVI HOROSKOP – Ohmanda API ===
+# === PREVOD HOROSKOPA NA SRPSKI (LibreTranslate – besplatno, bez ključa) ===
+def translate_to_serbian(text: str) -> str:
+    try:
+        url = "https://libretranslate.com/translate"
+        payload = {
+            "q": text,
+            "source": "en",
+            "target": "sr",
+            "format": "text"
+        }
+        headers = {"Content-Type": "application/json"}
+        resp = requests.post(url, json=payload, timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            translated = data.get("translatedText", text)
+            return translated.strip()
+    except Exception as e:
+        logger.warning(f"Greška pri prevodu horoskopa: {e}")
+    return text  # ako prevod ne uspe, vrati original (engleski)
+
+
+# === PRAVI HOROSKOP SA AUTOMATSKIM PREVODOM NA SRPSKI ===
 def fetch_real_horoscope(star_sign: Optional[str]) -> str:
     if not star_sign:
-        return "🔮 Horoskop\nAko hoces horoskop u poruci, podesi znak u Podesi ciklus."
-    
+        return "🔮 Horoskop\nAko hoćeš horoskop u poruci, podesi znak u Podesi ciklus."
+
     english_sign = SIGN_TO_ENGLISH.get(star_sign)
     if not english_sign:
-        return "🔮 Horoskop trenutno nije dostupan."
-    
+        return "🔮 Horoskop trenutno nije dostupan za taj znak."
+
     try:
         url = f"https://ohmanda.com/api/horoscope/{english_sign}/"
         resp = requests.get(url, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
-            horoscope_text = data.get("horoscope", "").strip()
-            if horoscope_text:
-                return f"🔮 Horoskop za {star_sign}\n\n{horoscope_text}"
+            horoscope_text_en = data.get("horoscope", "").strip()
+            if horoscope_text_en:
+                # Prevedi na srpski
+                horoscope_text_sr = translate_to_serbian(horoscope_text_en)
+                return f"🔮 Horoskop za {star_sign}\n\n{horoscope_text_sr}"
     except Exception as e:
-        logger.warning(f"Greska pri fetch-ovanju horoskopa: {e}")
-    
+        logger.warning(f"Greška pri fetch-ovanju horoskopa: {e}")
+
+    # Fallback – tvoje stare motivacione poruke na srpskom
     fallback = [
-        f"🔮 Horoskop\nZa {star_sign}, danas jedna mala odluka pravi razliku, preseci i zavrsi.",
-        f"🔮 Horoskop\nZa {star_sign}, fokus na zavrsavanje obaveza, jedna stvar manje u glavi.",
-        f"🔮 Horoskop\nZa {star_sign}, manje buke, vise mira, danas ti mir vredi najvise.",
+        f"🔮 Horoskop\nZa {star_sign}, danas jedna mala odluka pravi razliku, preseci i završi.",
+        f"🔮 Horoskop\nZa {star_sign}, fokus na završavanje obaveza, jedna stvar manje u glavi.",
+        f"🔮 Horoskop\nZa {star_sign}, manje buke, više mira – danas ti mir vredi najviše.",
         f"🔮 Horoskop\nZa {star_sign}, kreativnost ti radi, pretvori to u konkretnu akciju.",
     ]
     return random.choice(fallback)
 
+
 def daily_horoscope(star_sign: Optional[str]) -> str:
     return fetch_real_horoscope(star_sign)
-
+    
 # === Akcioni blokovi po fazama ===
 def action_block_menstrual() -> str:
     return (
