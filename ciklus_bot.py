@@ -215,7 +215,7 @@ def _weather_part(weather_cat: str) -> str:
 def _phase_part(phase: str) -> str:
     """Generiše blok teksta o hormonalnoj fazi."""
     if "menstrualna" in phase:
-        return "🩸 *Menstrualna faza*\nTelo intenzivno izbacuje sluznicu, mogu se javljati bolovi i pad energije. Normalno je da si sporija i osetljivija. 
+        return "🩸 *Menstrualna faza*\nMenstrualna faza^info intenzivno izbacuje sluznicu, mogu se javljati bolovi i pad energije. Normalno je da si sporija i osetljivija. "
 
 [Image of 4 stages of menstrual cycle with hormone levels]
 \n\n"
