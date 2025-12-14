@@ -4,18 +4,17 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
-
-import requests
 import random
+import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
-    ContextTypes,
+    MessageHandler,
     ConversationHandler,
+    ContextTypes,
     PicklePersistence,
     filters,
 )
@@ -44,12 +43,8 @@ HOROSCOPE_SIGNS = [
     "Vaga", "Škorpija", "Strelac", "Jarac", "Vodolija", "Ribe"
 ]
 
-(
-    SET_CYCLE_LENGTH,
-    SET_PERIOD_LENGTH,
-    SET_LAST_START,
-    SET_STAR_SIGN,
-) = range(4)
+SET_CYCLE_LENGTH, SET_PERIOD_LENGTH, SET_LAST_START, SET_STAR_SIGN = range(4)
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -57,27 +52,33 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"OK")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+
 def start_health_server():
     server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
     print(f"[health] Listening on port {PORT}")
     server.serve_forever()
 
-def _job_name(chat_id: int) -> str:
+
+def job_name_daily(chat_id: int) -> str:
     return f"daily22_{chat_id}"
 
-def get_user(application, chat_id: int) -> dict:
-    data = application.chat_data.setdefault(chat_id, {})
+
+def ensure_user_defaults(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    data = context.chat_data
     data.setdefault("cycle_length", 28)
     data.setdefault("period_length", 5)
-    data.setdefault("last_start", None)      # date
-    data.setdefault("star_sign", None)       # str
-    data.setdefault("daily22_enabled", False)
+    data.setdefault("last_start", None)        # date
+    data.setdefault("star_sign", None)         # str
+    data.setdefault("daily22_enabled", False)  # bool
     return data
 
-def main_menu_keyboard(user: dict | None = None) -> InlineKeyboardMarkup:
-    enabled = bool(user and user.get("daily22_enabled"))
-    daily_label = "🔕 Dnevna poruka 22:00, isključi" if enabled else "🔔 Dnevna poruka 22:00, uključi"
 
+def main_menu_keyboard(daily_enabled: bool) -> InlineKeyboardMarkup:
+    daily_label = "🔕 Dnevna poruka 22:00, isključi" if daily_enabled else "🔔 Dnevna poruka 22:00, uključi"
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📅 Podesi ciklus", callback_data="setup")],
@@ -86,6 +87,7 @@ def main_menu_keyboard(user: dict | None = None) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("📍 Trenutni dan", callback_data="today")],
         ]
     )
+
 
 def mood_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -101,6 +103,7 @@ def mood_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+
 def sign_keyboard() -> InlineKeyboardMarkup:
     rows = []
     row = []
@@ -114,6 +117,7 @@ def sign_keyboard() -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("Preskoči", callback_data="sign_skip")])
     return InlineKeyboardMarkup(rows)
 
+
 def parse_date(text: str):
     t = text.strip()
     for fmt in ["%d.%m.%Y.", "%d.%m.%Y"]:
@@ -123,13 +127,14 @@ def parse_date(text: str):
             continue
     return None
 
+
 def calc_next_dates(user: dict):
     if not user.get("last_start"):
         return None
 
     last_start = user["last_start"]
-    cycle = int(user["cycle_length"])
-    period_len = int(user["period_length"])
+    cycle = int(user.get("cycle_length", 28))
+    period_len = int(user.get("period_length", 5))
 
     next_start = last_start + timedelta(days=cycle)
     fertile_start = last_start + timedelta(days=cycle - 18)
@@ -142,6 +147,7 @@ def calc_next_dates(user: dict):
         "fertile_end": fertile_end,
         "period_end": period_end,
     }
+
 
 def get_cycle_state_for_today(user: dict):
     if not user.get("last_start"):
@@ -165,6 +171,7 @@ def get_cycle_state_for_today(user: dict):
         phase = "luteinska faza"
 
     return day_of_cycle, phase
+
 
 def fetch_weather_category():
     if not WEATHER_API_KEY:
@@ -194,243 +201,182 @@ def fetch_weather_category():
         logger.warning(f"Greska pri citanju vremena {e}")
         return None, None
 
-def _weather_part(weather_cat: str | None) -> str:
+
+def weather_part(weather_cat: str | None) -> str:
     if weather_cat == "suncano":
         return (
-            "☀️ *Vremenski utisak*\n"
-            "Sunce cesto podigne energiju, ali ne znaci da moras da budes na 100 posto.\n\n"
+            "☀️ Vremenski utisak\n"
+            "Sunce cesto podigne energiju, ali ne znaci da moras da guras na maksimum.\n\n"
         )
     if weather_cat == "kisovito":
         return (
-            "🌧️ *Vremenski utisak*\n"
+            "🌧️ Vremenski utisak\n"
             "Kisni dan ume da spusti raspolozenje i fokus, normalno je ako si usporenija.\n\n"
         )
     if weather_cat == "oblacno":
         return (
-            "☁️ *Vremenski utisak*\n"
-            "Oblacno cesto donese taj tihi umor, ne dramatizuj, samo prilagodi tempo.\n\n"
+            "☁️ Vremenski utisak\n"
+            "Oblacno cesto donese tihi umor, prilagodi tempo, bez drame.\n\n"
         )
     return ""
 
-def _phase_part(phase: str) -> str:
+
+def phase_part(phase: str) -> str:
     if "menstrualna" in phase:
         return (
-            "🩸 *Menstrualna faza*\n"
+            "🩸 Menstrualna faza\n"
             "Moguci su grcevi, pad energije, veca osetljivost, spusti gas bez krivice.\n\n"
         )
     if "folikularna" in phase:
         return (
-            "🌱 *Folikularna faza*\n"
+            "🌱 Folikularna faza\n"
             "Energija cesto raste, lakse se uvodi rutina i pokret.\n\n"
         )
     if "ovulacija" in phase:
         return (
-            "💛 *Ovulacija*\n"
+            "💛 Ovulacija\n"
             "Cesto peak faza, vise energije i samopouzdanja, dobar dan za akciju.\n\n"
         )
     return (
-        "🌙 *Luteinska faza*\n"
+        "🌙 Luteinska faza\n"
         "Cesce su natecenost, promena raspolozenja i veca glad, hormoni rade svoje.\n\n"
     )
 
-def _tip_part(phase: str) -> str:
-    if "menstrualna" in phase:
-        return "✅ *Savet*\nTopla hrana, voda, lagana setnja, san, i manje pritiska na sebe."
-    if "folikularna" in phase:
-        return "✅ *Savet*\nUvedi jednu naviku, trening, setnja ili plan obroka, telo sada voli tempo."
-    if "ovulacija" in phase:
-        return "✅ *Savet*\nJaci trening, bitne odluke, izlazak iz zone komfora, dobra energija."
-    return "✅ *Savet*\nProteini i vlakna, redovni obroci, i vise razumevanja prema sebi."
 
-def fetch_daily_horoscope(star_sign: str | None) -> str:
+def tip_part(phase: str) -> str:
+    if "menstrualna" in phase:
+        return "✅ Savet\nTopla hrana, voda, lagana setnja, san, i manje pritiska na sebe."
+    if "folikularna" in phase:
+        return "✅ Savet\nUvedi jednu naviku, trening, setnja ili plan obroka, telo sada voli tempo."
+    if "ovulacija" in phase:
+        return "✅ Savet\nJaci trening, bitne odluke, i sve sto trazis hrabrost."
+    return "✅ Savet\nProteini i vlakna, redovni obroci, i vise razumevanja prema sebi."
+
+
+def daily_horoscope(star_sign: str | None) -> str:
     if not star_sign:
-        return "Ako hoces horoskop u poruci, podesi znak kroz Podesi ciklus. 💫"
+        return "🔮 Horoskop\nAko hoces horoskop u poruci, podesi znak u Podesi ciklus."
 
     messages = [
-        f"🔮 *Horoskop*\nZa *{star_sign}*, danas je dan za jednu malu ali jasnu odluku. Ne razvlaci, preseci.",
-        f"🔮 *Horoskop*\n*{star_sign}* ima dobru energiju za zatvaranje obaveza. Zavrsis jednu stvar, i mir u glavi skoci.",
-        f"🔮 *Horoskop*\nZa *{star_sign}*, bolje malo manje ljudi, malo vise fokusa. Mir ti danas vredi zlata.",
-        f"🔮 *Horoskop*\n*{star_sign}*, kreativnost ti je jaca, iskoristi to za nesto konkretno, ne samo za mastanje.",
+        f"🔮 Horoskop\nZa {star_sign}, danas jedna mala odluka pravi razliku, preseci i zavrsi.",
+        f"🔮 Horoskop\nZa {star_sign}, fokus na zavrsavanje obaveza, jedna stvar manje u glavi.",
+        f"🔮 Horoskop\nZa {star_sign}, manje buke, vise mira, danas ti mir vredi najvise.",
+        f"🔮 Horoskop\nZa {star_sign}, kreativnost ti radi, pretvori to u konkretnu akciju.",
     ]
     return random.choice(messages)
 
-def build_today_overview(day_of_cycle: int, phase: str, weather_cat: str | None, star_sign: str | None) -> str:
-    base = f"📍 *Danas je {day_of_cycle}. dan ciklusa* (_{phase}_)\n\n"
-    closing = "\n\n🤍 Kad razumes kontekst, lakse prestanes da se krivis i pocnes da saradjujes sa sobom."
-    horoscope = fetch_daily_horoscope(star_sign)
-    return base + _weather_part(weather_cat) + _phase_part(phase) + horoscope + "\n\n" + _tip_part(phase) + closing
 
-def build_mood_message(mood: str, day_of_cycle: int, phase: str, weather_cat: str | None) -> str:
-    header = f"🧠 *Tvoj dnevni uvid*\nDanas je {day_of_cycle}. dan ciklusa (_{phase}_)\n\n"
-    weather = _weather_part(weather_cat)
-    phase_part = _phase_part(phase)
+def build_today_overview(user: dict) -> str:
+    day_of_cycle, phase = get_cycle_state_for_today(user)
+    if day_of_cycle is None:
+        return (
+            "Nemam datum poslednje menstruacije.\n"
+            "Udji na Podesi ciklus i unesi datum."
+        )
 
-    if mood == "sjajan":
-        mood_part = "🌟 *Sjajan dan*\nZapamti sta je radilo, san, hrana, ljudi, pokret, i ponovi sutra."
-    elif mood == "onako":
-        mood_part = "😐 *Onako dan*\nJedna mala korekcija sutra, voda, setnja, obrok, i dan ide u plus."
-    elif mood == "tezak":
-        mood_part = "😣 *Tezak dan*\nNe znaci da si slaba, znaci da je bilo tesko. Sutra spusti gas i cuvaj energiju."
+    weather_cat, _ = fetch_weather_category()
+    star_sign = user.get("star_sign")
+
+    text = (
+        f"📍 Danas je {day_of_cycle}. dan ciklusa, faza je {phase}\n\n"
+        f"{weather_part(weather_cat)}"
+        f"{phase_part(phase)}"
+        f"{daily_horoscope(star_sign)}\n\n"
+        f"{tip_part(phase)}\n\n"
+        "🤍 Kad razumes kontekst, lakse prestanes da se krivis i pocnes da saradjujes sa sobom."
+    )
+    return text
+
+
+def build_mood_message(user: dict, mood_key: str) -> str:
+    day_of_cycle, phase = get_cycle_state_for_today(user)
+    weather_cat, _ = fetch_weather_category()
+
+    header = f"🧠 Tvoj dnevni uvid\nDanas je {day_of_cycle}. dan ciklusa, faza je {phase}\n\n"
+    base = weather_part(weather_cat) + phase_part(phase)
+
+    if mood_key == "sjajan":
+        mood = "🌟 Sjajan dan\nZapamti sta je radilo, san, hrana, ljudi, pokret, i ponovi sutra."
+    elif mood_key == "onako":
+        mood = "😐 Onako dan\nSutra jedna mala korekcija, voda, setnja ili bolji obrok, i dan ide u plus."
+    elif mood_key == "tezak":
+        mood = "😣 Tezak dan\nNe znaci da si slaba, znaci da je bilo tesko, sutra spusti gas i cuvaj energiju."
     else:
-        mood_part = "🔥 *Stresan dan*\nStres nije tvoj identitet. Sutra izbaci jednu stvar koja te gazi."
+        mood = "🔥 Stresan dan\nStres nije tvoj identitet, sutra izbaci jednu stvar koja te gazi."
 
-    closing = "\n\n🤍 Hvala ti sto si prijavila dan, to je briga o sebi, ne glupost."
-    return header + weather + phase_part + mood_part + "\n\n" + _tip_part(phase) + closing
+    return header + base + mood + "\n\n" + tip_part(phase) + "\n\n🤍 Hvala ti sto si prijavila dan."
 
-def remove_job_if_exists(job_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+
+def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     jq = context.application.job_queue
     if jq is None:
         return False
-    jobs = jq.get_jobs_by_name(job_name)
+    jobs = jq.get_jobs_by_name(name)
     if not jobs:
         return False
     for j in jobs:
         j.schedule_removal()
     return True
 
+
 async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
-    user = get_user(context.application, chat_id)
 
-    day_of_cycle, phase = get_cycle_state_for_today(user)
-    if day_of_cycle is None:
+    stored = context.application.chat_data.get(chat_id)
+    if not stored:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="⏰ 22:00 poruka\nNemam datum ciklusa, udji na Podesi ciklus i unesi datum.",
-            reply_markup=main_menu_keyboard(user),
+            text="⏰ 22:00 poruka\nNemam tvoje podatke, udji na start i podesi ciklus.",
         )
         return
 
-    weather_cat, _ = fetch_weather_category()
-    text = build_today_overview(day_of_cycle, phase, weather_cat, user.get("star_sign"))
-
+    overview = build_today_overview(stored)
     tail = "\n\nAko zelis, prijavi raspolozenje jednim klikom."
     await context.bot.send_message(
         chat_id=chat_id,
-        text=text + tail,
+        text="⏰ Dnevna poruka 22:00\n\n" + overview + tail,
         reply_markup=mood_keyboard(),
-        parse_mode="Markdown",
     )
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = get_user(context.application, chat_id)
-
-    text = (
-        "Hej, ja sam bot za ciklus, vreme i mali astro dodatak. 🤖🩸💫\n\n"
-        "Ako ukljucis dnevnu poruku u 22:00, saljem automatski uvid, i nudim dugmad za raspolozenje.\n\n"
-        "Izaberi opciju."
+    user = ensure_user_defaults(context)
+    await update.message.reply_text(
+        "Hej, ja sam bot za ciklus, vreme i mali astro dodatak. 🤖🩸💫\n\nIzaberi opciju.",
+        reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
     )
-    await update.message.reply_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "/start, meni\n/stop, ugasi dnevnu poruku u 22:00",
+        "Komande\n/start meni\n/stop gasi dnevnu poruku u 22:00",
     )
+
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = ensure_user_defaults(context)
     chat_id = update.effective_chat.id
-    user = get_user(context.application, chat_id)
 
-    job_name = _job_name(chat_id)
-    removed = remove_job_if_exists(job_name, context)
-
+    removed = remove_job_if_exists(job_name_daily(chat_id), context)
     user["daily22_enabled"] = False
+
     await update.message.reply_text(
         "Ugaseno, nema vise poruke u 22:00." if removed else "Nije bilo ukljuceno.",
-        reply_markup=main_menu_keyboard(user),
+        reply_markup=main_menu_keyboard(False),
     )
 
-async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat.id
-    user = get_user(context.application, chat_id)
-    data = query.data
-
-    if data.startswith("mood_"):
-        mood_key = data.split("_", 1)[1]
-        day_of_cycle, phase = get_cycle_state_for_today(user)
-        if day_of_cycle is None:
-            await query.edit_message_text(
-                "Nemam datum ciklusa, udji na Podesi ciklus i unesi datum.",
-                reply_markup=main_menu_keyboard(user),
-            )
-            return ConversationHandler.END
-
-        weather_cat, _ = fetch_weather_category()
-        text = build_mood_message(mood_key, day_of_cycle, phase, weather_cat)
-        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
-        return ConversationHandler.END
-
-    if data == "status":
-        info = calc_next_dates(user)
-        if not user.get("last_start"):
-            text = "Nemam datum poslednje menstruacije, udji na Podesi ciklus i unesi datum."
-        else:
-            text = (
-                f"📊 *Trenutne postavke*\n\n"
-                f"• Duzina ciklusa, *{user['cycle_length']}* dana\n"
-                f"• Trajanje menstruacije, *{user['period_length']}* dana\n"
-                f"• Poslednji pocetak, *{user['last_start'].strftime('%d.%m.%Y.')}*\n"
-            )
-            if user.get("star_sign"):
-                text += f"• Horoskopski znak, *{user['star_sign']}*\n"
-            if info:
-                text += (
-                    "\n📆 *Procene*\n"
-                    f"• Sledeca menstruacija oko, *{info['next_start'].strftime('%d.%m.%Y.')}*\n"
-                    f"• Plodni dani, *{info['fertile_start'].strftime('%d.%m.%Y.')}* do *{info['fertile_end'].strftime('%d.%m.%Y.')}*\n"
-                    f"• Kraj menstruacije, *{info['period_end'].strftime('%d.%m.%Y.')}*\n\n"
-                    "_Sve su ovo procene._"
-                )
-        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
-        return ConversationHandler.END
-
-    if data == "today":
-        day_of_cycle, phase = get_cycle_state_for_today(user)
-        if day_of_cycle is None:
-            text = "Nemam datum ciklusa, udji na Podesi ciklus i unesi datum."
-        else:
-            weather_cat, _ = fetch_weather_category()
-            text = build_today_overview(day_of_cycle, phase, weather_cat, user.get("star_sign"))
-        await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
-        return ConversationHandler.END
-
-    if data == "toggle_daily22":
-        jq = context.application.job_queue
-        job_name = _job_name(chat_id)
-
-        if user.get("daily22_enabled"):
-            remove_job_if_exists(job_name, context)
-            user["daily22_enabled"] = False
-            await query.edit_message_text("Dnevna poruka u 22:00 je iskljucena.", reply_markup=main_menu_keyboard(user))
-            return ConversationHandler.END
-
-        if jq is not None:
-            jq.run_daily(
-                daily22_job,
-                time=dtime(hour=22, minute=0, tzinfo=TZ),
-                name=job_name,
-                chat_id=chat_id,
-            )
-        user["daily22_enabled"] = True
-        await query.edit_message_text("Dnevna poruka u 22:00 je ukljucena.", reply_markup=main_menu_keyboard(user))
-        return ConversationHandler.END
-
-    return ConversationHandler.END
 
 async def setup_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    ensure_user_defaults(context)
     await query.edit_message_text("Unesi duzinu ciklusa u danima, 20 do 45, na primer 28:")
     return SET_CYCLE_LENGTH
 
-async def set_cycle_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = get_user(context.application, chat_id)
 
+async def set_cycle_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = ensure_user_defaults(context)
     try:
         value = int(update.message.text.strip())
         if value < 20 or value > 45:
@@ -443,10 +389,9 @@ async def set_cycle_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Ok, sada upisi koliko dana traje menstruacija, 2 do 10, na primer 5:")
     return SET_PERIOD_LENGTH
 
-async def set_period_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = get_user(context.application, chat_id)
 
+async def set_period_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = ensure_user_defaults(context)
     try:
         value = int(update.message.text.strip())
         if value < 2 or value > 10:
@@ -459,9 +404,9 @@ async def set_period_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Super, posalji datum poslednje menstruacije, format dd.mm.gggg. na primer 21.11.2025.")
     return SET_LAST_START
 
+
 async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = get_user(context.application, chat_id)
+    user = ensure_user_defaults(context)
 
     date_obj = parse_date(update.message.text)
     if not date_obj:
@@ -469,18 +414,17 @@ async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SET_LAST_START
 
     user["last_start"] = date_obj
-
     await update.message.reply_text(
         "Zabelezio sam datum. Sada izaberi horoskopski znak, ili preskoci.",
         reply_markup=sign_keyboard(),
     )
     return SET_STAR_SIGN
 
+
 async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    chat_id = query.message.chat.id
-    user = get_user(context.application, chat_id)
+    user = ensure_user_defaults(context)
 
     if query.data == "sign_skip":
         user["star_sign"] = None
@@ -490,16 +434,109 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info = calc_next_dates(user)
     sign_txt = user["star_sign"] if user["star_sign"] else "nije podeseno"
 
-    text = "✅ *Podesavanje zavrseno*\n\n"
+    text = "✅ Podesavanje zavrseno\n\n"
     if info:
         text += (
-            f"• Znak, *{sign_txt}*\n"
-            f"• Sledeca menstruacija oko, *{info['next_start'].strftime('%d.%m.%Y.')}*\n"
-            f"• Plodni dani, *{info['fertile_start'].strftime('%d.%m.%Y.')}* do *{info['fertile_end'].strftime('%d.%m.%Y.')}*\n"
+            f"Znak, {sign_txt}\n"
+            f"Sledeca menstruacija oko, {info['next_start'].strftime('%d.%m.%Y.')}\n"
+            f"Plodni dani, {info['fertile_start'].strftime('%d.%m.%Y.')} do {info['fertile_end'].strftime('%d.%m.%Y.')}\n\n"
         )
-    text += "\nAko zelis automatsku poruku u 22:00, ukljuci je iz menija."
-    await query.edit_message_text(text, reply_markup=main_menu_keyboard(user), parse_mode="Markdown")
+    text += "Ako zelis automatsku poruku u 22:00, ukljuci je iz menija."
+
+    await query.edit_message_text(
+        text,
+        reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+    )
     return ConversationHandler.END
+
+
+async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = ensure_user_defaults(context)
+    chat_id = query.message.chat.id
+    data = query.data
+
+    if data.startswith("mood_"):
+        mood_key = data.split("_", 1)[1]
+        if not user.get("last_start"):
+            await query.edit_message_text(
+                "Nemam datum poslednje menstruacije. Udji na Podesi ciklus i unesi datum.",
+                reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+            )
+            return
+
+        text = build_mood_message(user, mood_key)
+        await query.edit_message_text(
+            text,
+            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+        )
+        return
+
+    if data == "status":
+        info = calc_next_dates(user)
+        if not user.get("last_start"):
+            text = "Nemam datum poslednje menstruacije. Udji na Podesi ciklus i unesi datum."
+        else:
+            text = (
+                "📊 Trenutne postavke\n\n"
+                f"Duzina ciklusa, {user['cycle_length']} dana\n"
+                f"Trajanje menstruacije, {user['period_length']} dana\n"
+                f"Poslednji pocetak, {user['last_start'].strftime('%d.%m.%Y.')}\n"
+                f"Znak, {user['star_sign'] if user.get('star_sign') else 'nije podeseno'}\n"
+            )
+            if info:
+                text += (
+                    "\n📆 Procene\n"
+                    f"Sledeca menstruacija oko, {info['next_start'].strftime('%d.%m.%Y.')}\n"
+                    f"Plodni dani, {info['fertile_start'].strftime('%d.%m.%Y.')} do {info['fertile_end'].strftime('%d.%m.%Y.')}\n"
+                    f"Kraj menstruacije, {info['period_end'].strftime('%d.%m.%Y.')}\n"
+                )
+        await query.edit_message_text(
+            text,
+            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+        )
+        return
+
+    if data == "today":
+        text = build_today_overview(user)
+        await query.edit_message_text(
+            text,
+            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+        )
+        return
+
+    if data == "toggle_daily22":
+        jq = context.application.job_queue
+        name = job_name_daily(chat_id)
+
+        if user.get("daily22_enabled"):
+            remove_job_if_exists(name, context)
+            user["daily22_enabled"] = False
+            await query.edit_message_text(
+                "Iskljucila si dnevnu poruku u 22:00.",
+                reply_markup=main_menu_keyboard(False),
+            )
+            return
+
+        if jq is not None:
+            jq.run_daily(
+                daily22_job,
+                time=dtime(hour=22, minute=0, tzinfo=TZ),
+                name=name,
+                chat_id=chat_id,
+            )
+        user["daily22_enabled"] = True
+        await query.edit_message_text(
+            "Ukljucila si dnevnu poruku u 22:00.",
+            reply_markup=main_menu_keyboard(True),
+        )
+        return
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.exception("Unhandled error", exc_info=context.error)
+
 
 async def post_init(application):
     jq = application.job_queue
@@ -508,23 +545,24 @@ async def post_init(application):
 
     for chat_id, data in application.chat_data.items():
         try:
-            if not data.get("daily22_enabled"):
+            if not isinstance(chat_id, int):
+                continue
+            if not data or not data.get("daily22_enabled"):
                 continue
 
-            cid = int(chat_id)
-            job_name = _job_name(cid)
-
-            for j in jq.get_jobs_by_name(job_name):
+            name = job_name_daily(chat_id)
+            for j in jq.get_jobs_by_name(name):
                 j.schedule_removal()
 
             jq.run_daily(
                 daily22_job,
                 time=dtime(hour=22, minute=0, tzinfo=TZ),
-                name=job_name,
-                chat_id=cid,
+                name=name,
+                chat_id=chat_id,
             )
         except Exception as e:
             logger.exception(f"post_init reschedule greska {e}")
+
 
 def main():
     threading.Thread(target=start_health_server, daemon=True).start()
@@ -558,7 +596,12 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(cb_router))
 
+    app.add_error_handler(error_handler)
+
+    print("[bot] Starting Telegram bot...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
+    
