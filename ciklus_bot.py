@@ -499,12 +499,17 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "today":
-        text = build_today_overview(user)
-        await query.edit_message_text(
-            text,
-            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
-        )
-        return
+    text = build_today_overview(user)
+    await query.edit_message_text(
+        text,
+        reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+    )
+
+    await query.message.reply_text(
+        "Kako ti je prosao dan, izaberi najblizu opciju",
+        reply_markup=mood_keyboard(),
+    )
+    return
 
     if data == "toggle_daily22":
         jq = context.application.job_queue
