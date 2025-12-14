@@ -4,6 +4,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
+from typing import Optional
 import random
 import requests
 
@@ -71,19 +72,18 @@ def ensure_user_defaults(context: ContextTypes.DEFAULT_TYPE) -> dict:
     data = context.chat_data
     data.setdefault("cycle_length", 28)
     data.setdefault("period_length", 5)
-    data.setdefault("last_start", None)        # date
-    data.setdefault("star_sign", None)         # str
-    data.setdefault("daily22_enabled", False)  # bool
+    data.setdefault("last_start", None)          # date
+    data.setdefault("star_sign", None)           # str
+    data.setdefault("low_energy_streak", 0)      # int
+    data.setdefault("seen_start", False)         # bool
     return data
 
 
-def main_menu_keyboard(daily_enabled: bool) -> InlineKeyboardMarkup:
-    daily_label = "🔕 Dnevna poruka 22:00, isključi" if daily_enabled else "🔔 Dnevna poruka 22:00, uključi"
+def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📅 Podesi ciklus", callback_data="setup")],
             [InlineKeyboardButton("📊 Moj ciklus", callback_data="status")],
-            [InlineKeyboardButton(daily_label, callback_data="toggle_daily22")],
             [InlineKeyboardButton("📍 Trenutni dan", callback_data="today")],
         ]
     )
@@ -202,7 +202,7 @@ def fetch_weather_category():
         return None, None
 
 
-def weather_part(weather_cat: str | None) -> str:
+def weather_part(weather_cat: Optional[str]) -> str:
     if weather_cat == "suncano":
         return (
             "☀️ Vremenski utisak\n"
@@ -243,17 +243,85 @@ def phase_part(phase: str) -> str:
     )
 
 
-def tip_part(phase: str) -> str:
-    if "menstrualna" in phase:
-        return "✅ Savet\nTopla hrana, voda, lagana setnja, san, i manje pritiska na sebe."
+def hormone_hack_block() -> str:
+    return (
+        "🤬 Nisi bas raspolozena\n\n"
+        "📉 Osecas pad energije i motivacije\n\n"
+        "Da li znas da mozes da hakujes svoj organizam i podignes raspolozenje na visi nivo na kvalitetan nacin\n\n"
+        "Nase telo je neverovatan sistem koji proizvodi pozitivne hormone, prirodne boostere srece, zadovoljstva i uzivanja.\n\n"
+        "Evo kako mozes da ih aktiviras i preuzmes kontrolu nad svojim osecanjima\n\n"
+        "🔋 DOPAMIN, hormon zadovoljstva, oseti nalet snage kroz\n"
+        "Kvalitetan san 😴\n"
+        "Omiljenu muziku 🎧\n"
+        "Fizicku aktivnost 🏃‍♂️\n\n"
+        "😊 SEROTONIN, hormon srece\n"
+        "Podigni raspolozenje zahvaljujuci\n"
+        "Praktikovanju zahvalnosti 🙏\n"
+        "Promeni okruzenja 🌿\n"
+        "Ostvarivanju ciljeva 🎯\n\n"
+        "💖 OKSITOCIN, hormon blazenstva\n"
+        "Stvori osecaj bliskosti kroz\n"
+        "Molitvu ili meditaciju 🧘‍♀️\n"
+        "Velikodusnost 🎁\n"
+        "Grljenje 🤗\n\n"
+        "🎉 ENDORFIN, hormon uzivanja\n"
+        "Uzivi se u trenutku kroz\n"
+        "Smeh 😂\n"
+        "Seks ❤️\n"
+        "Druzenje i ples 💃🕺\n\n"
+        "Nemoj cekati da se osecas bolje, preuzmi stvar u svoje ruke 💥"
+    )
+
+
+def is_low_energy_day(phase: str, weather_cat: Optional[str]) -> bool:
+    return ("luteinska" in phase) or ("menstrualna" in phase) or (weather_cat in ["oblacno", "kisovito"])
+
+
+def low_energy_streak_prefix(user: dict) -> str:
+    streak = int(user.get("low_energy_streak", 0))
+    if streak >= 3:
+        return (
+            "🧯 Treci dan zaredom niza energija\n"
+            "Ne treba ti dodatni pritisak, treba ti stabilizacija.\n"
+            "Cilj danas je minimum koji drzi kontrolu, ne maksimum koji te slomi.\n\n"
+        )
+    if streak == 2:
+        return (
+            "⚡ Drugi dan zaredom niza energija\n"
+            "Normalno je, danas igramo pametno, ne herojski.\n\n"
+        )
+    return ""
+
+
+def tip_part(phase: str, weather_cat: Optional[str]) -> str:
+    if is_low_energy_day(phase, weather_cat):
+        return (
+            "⚡ Energija danas moze biti niza\n"
+            "Ovo nije dan za forsiranje.\n\n"
+            "✅ Mini reset za energiju\n"
+            "Zdrav kofein\n"
+            "Dobra muzika koja te dize\n"
+            "Kratka setnja ili lagano istezanje\n"
+            "Druzenje ili bar kontakt sa ljudima koji ti pune baterije\n\n"
+            "Ne moras da pobedis dan, dovoljno je da ga ne izgubis."
+        )
+
     if "folikularna" in phase:
-        return "✅ Savet\nUvedi jednu naviku, trening, setnja ili plan obroka, telo sada voli tempo."
+        return (
+            "✅ Savet\n"
+            "Iskoristi rast energije za akciju, trening, setnja, plan obroka, telo sada lakse podnosi napor."
+        )
+
     if "ovulacija" in phase:
-        return "✅ Savet\nJaci trening, bitne odluke, i sve sto trazis hrabrost."
-    return "✅ Savet\nProteini i vlakna, redovni obroci, i vise razumevanja prema sebi."
+        return (
+            "✅ Savet\n"
+            "Odlican period za jaci trening, sastanke i odluke, fokus i samopouzdanje su prirodno visi."
+        )
+
+    return "✅ Savet\nDanas samo drzi rutinu, bez preterivanja."
 
 
-def daily_horoscope(star_sign: str | None) -> str:
+def daily_horoscope(star_sign: Optional[str]) -> str:
     if not star_sign:
         return "🔮 Horoskop\nAko hoces horoskop u poruci, podesi znak u Podesi ciklus."
 
@@ -276,14 +344,22 @@ def build_today_overview(user: dict) -> str:
 
     weather_cat, _ = fetch_weather_category()
     star_sign = user.get("star_sign")
+    prefix = low_energy_streak_prefix(user)
 
     text = (
         f"📍 Danas je {day_of_cycle}. dan ciklusa, faza je {phase}\n\n"
+        f"{prefix}"
         f"{weather_part(weather_cat)}"
         f"{phase_part(phase)}"
         f"{daily_horoscope(star_sign)}\n\n"
-        f"{tip_part(phase)}\n\n"
-        "🤍 Kad razumes kontekst, lakse prestanes da se krivis i pocnes da saradjujes sa sobom."
+        f"{tip_part(phase, weather_cat)}"
+    )
+
+    if is_low_energy_day(phase, weather_cat):
+        text += "\n\n" + hormone_hack_block()
+
+    text += (
+        "\n\n🤍 Kad razumes kontekst, lakse prestanes da se krivis i pocnes da saradjujes sa sobom."
     )
     return text
 
@@ -296,27 +372,32 @@ def build_mood_message(user: dict, mood_key: str) -> str:
     base = weather_part(weather_cat) + phase_part(phase)
 
     if mood_key == "sjajan":
-        mood = "🌟 Sjajan dan\nZapamti sta je radilo, san, hrana, ljudi, pokret, i ponovi sutra."
+        mood = (
+            "🌟 Sjajan dan\n"
+            "Bravo. Zapamti sta je radilo, san, hrana, ljudi, pokret, i ponovi sutra."
+        )
+        extra = ""
     elif mood_key == "onako":
-        mood = "😐 Onako dan\nSutra jedna mala korekcija, voda, setnja ili bolji obrok, i dan ide u plus."
+        mood = (
+            "😐 Onako dan\n"
+            "Sivi danovi su najopasniji jer te uspavaju. Sutra jedna mala korekcija i to je pobeda."
+        )
+        extra = "\n\n" + hormone_hack_block()
     elif mood_key == "tezak":
-        mood = "😣 Tezak dan\nNe znaci da si slaba, znaci da je bilo tesko, sutra spusti gas i cuvaj energiju."
+        mood = (
+            "😣 Tezak dan\n"
+            "Tezak dan ne znaci da si slaba. Znaci da je bilo tesko. Sutra spusti gas i cuvaj energiju."
+        )
+        extra = "\n\n" + hormone_hack_block()
     else:
-        mood = "🔥 Stresan dan\nStres nije tvoj identitet, sutra izbaci jednu stvar koja te gazi."
+        mood = (
+            "🔥 Stresan dan\n"
+            "Stres nije tvoj identitet. Sutra izbaci jednu stvar koja te gazi, jednu jedinu."
+        )
+        extra = "\n\n" + hormone_hack_block()
 
-    return header + base + mood + "\n\n" + tip_part(phase) + "\n\n🤍 Hvala ti sto si prijavila dan."
-
-
-def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    jq = context.application.job_queue
-    if jq is None:
-        return False
-    jobs = jq.get_jobs_by_name(name)
-    if not jobs:
-        return False
-    for j in jobs:
-        j.schedule_removal()
-    return True
+    tail = "\n\n" + tip_part(phase, weather_cat) + "\n\n🤍 Hvala ti sto si prijavila dan."
+    return header + base + mood + extra + tail
 
 
 async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
@@ -331,6 +412,15 @@ async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    day_of_cycle, phase = get_cycle_state_for_today(stored)
+    weather_cat, _ = fetch_weather_category()
+
+    if day_of_cycle is not None and phase is not None:
+        if is_low_energy_day(phase, weather_cat):
+            stored["low_energy_streak"] = int(stored.get("low_energy_streak", 0)) + 1
+        else:
+            stored["low_energy_streak"] = 0
+
     overview = build_today_overview(stored)
     tail = "\n\nAko zelis, prijavi raspolozenje jednim klikom."
     await context.bot.send_message(
@@ -342,28 +432,36 @@ async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = ensure_user_defaults(context)
+    chat_id = update.effective_chat.id
+
+    user["seen_start"] = True
+
+    jq = context.application.job_queue
+    name = job_name_daily(chat_id)
+
+    if jq is not None and not jq.get_jobs_by_name(name):
+        jq.run_daily(
+            daily22_job,
+            time=dtime(hour=22, minute=0, tzinfo=TZ),
+            name=name,
+            chat_id=chat_id,
+        )
+
     await update.message.reply_text(
-        "Hej, ja sam bot za ciklus, vreme i mali astro dodatak. 🤖🩸💫\n\nIzaberi opciju.",
-        reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+        "Hej, ja sam bot za ciklus, vreme i raspolozenje. 🤖🩸\n\n"
+        "Svako vece u 22:00 dobijas dnevnu poruku automatski.\n"
+        "Ako hoces i horoskop, podesi znak kroz Podesi ciklus.\n\n"
+        "Izaberi opciju:",
+        reply_markup=main_menu_keyboard(),
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Komande\n/start meni\n/stop gasi dnevnu poruku u 22:00",
-    )
-
-
-async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = ensure_user_defaults(context)
-    chat_id = update.effective_chat.id
-
-    removed = remove_job_if_exists(job_name_daily(chat_id), context)
-    user["daily22_enabled"] = False
-
-    await update.message.reply_text(
-        "Ugaseno, nema vise poruke u 22:00." if removed else "Nije bilo ukljuceno.",
-        reply_markup=main_menu_keyboard(False),
+        "Komande\n"
+        "/start meni\n\n"
+        "Dnevna poruka u 22:00 je automatska.",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -441,11 +539,11 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Sledeca menstruacija oko, {info['next_start'].strftime('%d.%m.%Y.')}\n"
             f"Plodni dani, {info['fertile_start'].strftime('%d.%m.%Y.')} do {info['fertile_end'].strftime('%d.%m.%Y.')}\n\n"
         )
-    text += "Ako zelis automatsku poruku u 22:00, ukljuci je iz menija."
+    text += "Svako vece u 22:00 dobijas dnevnu poruku automatski."
 
     await query.edit_message_text(
         text,
-        reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+        reply_markup=main_menu_keyboard(),
     )
     return ConversationHandler.END
 
@@ -453,23 +551,26 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user = ensure_user_defaults(context)
-    chat_id = query.message.chat.id
     data = query.data
 
     if data.startswith("mood_"):
         mood_key = data.split("_", 1)[1]
+        if mood_key == "sjajan":
+            user["low_energy_streak"] = 0
+
         if not user.get("last_start"):
             await query.edit_message_text(
                 "Nemam datum poslednje menstruacije. Udji na Podesi ciklus i unesi datum.",
-                reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+                reply_markup=main_menu_keyboard(),
             )
             return
 
         text = build_mood_message(user, mood_key)
         await query.edit_message_text(
             text,
-            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+            reply_markup=main_menu_keyboard(),
         )
         return
 
@@ -494,7 +595,7 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         await query.edit_message_text(
             text,
-            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+            reply_markup=main_menu_keyboard(),
         )
         return
 
@@ -502,40 +603,12 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = build_today_overview(user)
         await query.edit_message_text(
             text,
-            reply_markup=main_menu_keyboard(bool(user.get("daily22_enabled"))),
+            reply_markup=main_menu_keyboard(),
         )
-    
+
         await query.message.reply_text(
             "Kako ti je prosao dan, izaberi najblizu opciju",
             reply_markup=mood_keyboard(),
-        )
-        return
-
-
-    if data == "toggle_daily22":
-        jq = context.application.job_queue
-        name = job_name_daily(chat_id)
-
-        if user.get("daily22_enabled"):
-            remove_job_if_exists(name, context)
-            user["daily22_enabled"] = False
-            await query.edit_message_text(
-                "Iskljucila si dnevnu poruku u 22:00.",
-                reply_markup=main_menu_keyboard(False),
-            )
-            return
-
-        if jq is not None:
-            jq.run_daily(
-                daily22_job,
-                time=dtime(hour=22, minute=0, tzinfo=TZ),
-                name=name,
-                chat_id=chat_id,
-            )
-        user["daily22_enabled"] = True
-        await query.edit_message_text(
-            "Ukljucila si dnevnu poruku u 22:00.",
-            reply_markup=main_menu_keyboard(True),
         )
         return
 
@@ -553,10 +626,13 @@ async def post_init(application):
         try:
             if not isinstance(chat_id, int):
                 continue
-            if not data or not data.get("daily22_enabled"):
+            if not isinstance(data, dict):
+                continue
+            if not data.get("seen_start"):
                 continue
 
             name = job_name_daily(chat_id)
+
             for j in jq.get_jobs_by_name(name):
                 j.schedule_removal()
 
@@ -597,7 +673,6 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("stop", stop))
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(cb_router))
@@ -610,4 +685,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
