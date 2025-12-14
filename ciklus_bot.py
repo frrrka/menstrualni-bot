@@ -511,6 +511,7 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
+
     if data == "toggle_daily22":
         jq = context.application.job_queue
         name = job_name_daily(chat_id)
