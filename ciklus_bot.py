@@ -41,21 +41,6 @@ HOROSCOPE_SIGNS = [
     "Vaga", "Škorpija", "Strelac", "Jarac", "Vodolija", "Ribe"
 ]
 
-SIGN_TO_ENGLISH = {
-    "Ovan": "aries",
-    "Bik": "taurus",
-    "Blizanac": "gemini",
-    "Rak": "cancer",
-    "Lav": "leo",
-    "Devica": "virgo",
-    "Vaga": "libra",
-    "Škorpija": "scorpio",
-    "Strelac": "sagittarius",
-    "Jarac": "capricorn",
-    "Vodolija": "aquarius",
-    "Ribe": "pisces",
-}
-
 SET_CYCLE_LENGTH, SET_PERIOD_LENGTH, SET_LAST_START, SET_STAR_SIGN = range(4)
 
 # === FAZA-SPECIFIČNE MOTIVACIONE PORUKE ===
@@ -161,13 +146,9 @@ def daily_horoscope(star_sign: Optional[str]) -> str:
         f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, posao danas zahteva strpljenje. Ne žuri sa odlukama – pametan potez je bolji od brzog.",
         f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, novac koji uštediš danas je novac koji radi za tebe sutra. Drži disciplinu – sloboda je na domaku.",
     ]
-    
+
     return random.choice(messages)
 
-
-def daily_horoscope(star_sign: Optional[str]) -> str:
-    return fetch_real_horoscope(star_sign)
-    
 # === Akcioni blokovi po fazama ===
 def action_block_menstrual() -> str:
     return (
@@ -390,7 +371,6 @@ def build_mood_message(user: dict, mood_key: str) -> str:
     day_of_cycle, phase = get_cycle_state_for_today(user)
     weather_cat, _ = fetch_weather_category()
     prefix = streak_prefix(user)
-
     header = (
         f"🧠 Tvoj feedback za danas\nDanas je {day_of_cycle}. dan ciklusa – **{phase.capitalize()}**\n\n"
         f"{prefix}"
@@ -398,7 +378,6 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         f"{phase_part(phase)}"
         f"{daily_horoscope(user.get('star_sign'))}\n\n"
     )
-
     # Akcioni blok
     if "menstrualna" in phase:
         action_block = action_block_menstrual()
@@ -408,7 +387,6 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         action_block = action_block_ovulation()
     else:
         action_block = action_block_luteal()
-
     # Poruke po fazi
     if "luteinska" in phase:
         okay_msgs = LUTEAL_OKAY_MOOD_MSGS
@@ -426,17 +404,14 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         okay_msgs = ["U menstrualnoj si, a dan 'onako'? To je pobeda. Telo se regeneriše, ti držiš stabilnost."]
         bad_msgs = MENSTRUAL_BAD_MOOD_MSGS
         nutrition = random.choice(GENERAL_NUTRITION)
-
     if mood_key == "sjajan":
         feedback = "🌟 Sjajan dan\nBravo. Zapamti sta je radilo i ponovi sutra – hormoni su ti saveznici danas."
         return header + feedback + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
-
     elif mood_key == "onako":
         feedback = random.choice(okay_msgs)
         extra = f"\n\n✅ Mali plus za kraj dana\nIshrana: {nutrition}"
         return header + feedback + extra + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
-
-    else:  # težak ili stresan
+    else: # težak ili stresan
         feedback = random.choice(bad_msgs)
         extra = f"\n\n💥 Brzi reset\nIshrana: {nutrition}\n\n{hormone_hack_block()}"
         return header + f"{action_block}\n\n{feedback}" + extra + "\n\n🤍 Hvala ti sto si prijavila dan."
