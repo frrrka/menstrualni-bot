@@ -124,57 +124,45 @@ def hormone_hack_block() -> str:
         "Nemoj cekati da se osecas bolje, preuzmi stvar u svoje ruke 💥"
     )
 
-# === PREVOD HOROSKOPA NA SRPSKI (LibreTranslate – besplatno, bez ključa) ===
-def translate_to_serbian(text: str) -> str:
-    try:
-        url = "https://libretranslate.com/translate"
-        payload = {
-            "q": text,
-            "source": "en",
-            "target": "sr",
-            "format": "text"
-        }
-        headers = {"Content-Type": "application/json"}
-        resp = requests.post(url, json=payload, timeout=8)
-        if resp.status_code == 200:
-            data = resp.json()
-            translated = data.get("translatedText", text)
-            return translated.strip()
-    except Exception as e:
-        logger.warning(f"Greška pri prevodu horoskopa: {e}")
-    return text  # ako prevod ne uspe, vrati original (engleski)
-
-
-# === PRAVI HOROSKOP SA AUTOMATSKIM PREVODOM NA SRPSKI ===
-def fetch_real_horoscope(star_sign: Optional[str]) -> str:
+# === DNEVNI HOROSKOP ZA KARIJERU I FINANSIJE (30 poruka) ===
+def daily_horoscope(star_sign: Optional[str]) -> str:
     if not star_sign:
-        return "🔮 Horoskop\nAko hoćeš horoskop u poruci, podesi znak u Podesi ciklus."
+        return "🔮 Horoskop za karijeru i finansije\nAko želiš dnevni horoskop za posao i novac, podesi znak u Podesi ciklus."
 
-    english_sign = SIGN_TO_ENGLISH.get(star_sign)
-    if not english_sign:
-        return "🔮 Horoskop trenutno nije dostupan za taj znak."
-
-    try:
-        url = f"https://ohmanda.com/api/horoscope/{english_sign}/"
-        resp = requests.get(url, timeout=8)
-        if resp.status_code == 200:
-            data = resp.json()
-            horoscope_text_en = data.get("horoscope", "").strip()
-            if horoscope_text_en:
-                # Prevedi na srpski
-                horoscope_text_sr = translate_to_serbian(horoscope_text_en)
-                return f"🔮 Horoskop za {star_sign}\n\n{horoscope_text_sr}"
-    except Exception as e:
-        logger.warning(f"Greška pri fetch-ovanju horoskopa: {e}")
-
-    # Fallback – tvoje stare motivacione poruke na srpskom
-    fallback = [
-        f"🔮 Horoskop\nZa {star_sign}, danas jedna mala odluka pravi razliku, preseci i završi.",
-        f"🔮 Horoskop\nZa {star_sign}, fokus na završavanje obaveza, jedna stvar manje u glavi.",
-        f"🔮 Horoskop\nZa {star_sign}, manje buke, više mira – danas ti mir vredi najviše.",
-        f"🔮 Horoskop\nZa {star_sign}, kreativnost ti radi, pretvori to u konkretnu akciju.",
+    messages = [
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, danas je dan za pametne poslovne poteze. Fokusiraj se na sistem – jedna dosledna akcija na poslu donosi više nego 10 haotičnih. Drži ritam, rezultati dolaze.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, prilika za napredak ili dodatni prihod je blizu. Ne čekaj savršen trenutak – uradi jedan korak ka boljoj poziciji. Sistem pobeđuje sreću.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, pregledaj budžet i troškove. Mali uštedni potez danas gradi finansijsku slobodu sutra. Bez impulsivnih kupovina – disciplina je tvoja snaga.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, posao zahteva fokus na detalje. Završi obaveze bez odlaganja – jedna stvar manje u glavi znači više energije za velike karijerne ciljeve.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, vreme je za planiranje karijernog napretka. Investiraj u sebe (znanje, veštine) – to donosi najveći finansijski povrat.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, stabilnost je ključ. Izbegavaj rizik, čuvaj rezervu – neočekivane poslovne prilike dolaze onima koji su spremni.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, timski rad ili kontakt sa kolegama donosi korist. Jedan dobar razgovor može otvoriti vrata ka boljoj poziciji ili bonusu.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, novac dolazi kroz doslednost. Drži budžet, ulaži pametno – danas gradiš sigurnu finansijsku budućnost.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, prilika za promenu posla ili dodatni projekat je blizu. Pripremi se – sistem i disciplina pobeđuju konkurenciju.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, fokus na dugoročne ciljeve. Mali korak danas na poslu ili u finansijama vodi ka velikoj promeni za godinu dana.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, danas je dan za pregled prioriteta. Manje buke na poslu, više akcije – završeni zadaci donose mir i bolju zaradu.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, finansijska disciplina je tvoja najveća snaga. Ne troši na nepotrebno – svaki ušteđeni dinar je ulaganje u slobodu.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, posao teče bolje kad imaš jasan plan. Danas napravi listu prioriteta – sistemski pristup donosi brže rezultate.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, prilika za bonus ili povišicu je u detaljima. Obrati pažnju na kvalitet rada – to se uvek isplati.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, danas je dobar dan za štednju. Odloži impulsivnu kupovinu – sutra ćeš biti zahvalna sebi.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, karijerni rast dolazi kroz učenje. Danas uloži vreme u novu veštinu – to je najbolja investicija.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, finansije su stabilnije kad imaš rezervu. Danas dodaj nešto na štedni račun – mali korak, veliki mir.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, poslovni kontakt ili mreža danas može doneti korist. Ne zatvaraj vrata – jedna poruka može promeniti sve.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, danas je dan za završavanje obaveza. Čista glava = više prostora za nove poslovne prilike.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, novac ne dolazi preko noći – dolazi kroz sistem. Drži ritam, rezultati su neizbežni.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, pregledaj stare troškove. Gde curi novac? Danas zatvori tu rupu – to je najbrži način za veću zaradu.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, posao je maraton, ne sprint. Danas održi tempo – doslednost je ono što te izdvaja od drugih.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, finansijska sloboda počinje malim navikama. Danas preskoči kafu van kuće – mali potez, veliki efekat.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, danas je dan za poslovni plan. Zapiši ciljeve za naredni mesec – jasan put vodi do veće zarade.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, prilika za dodatni prihod je u tvom znanju. Danas ponudi uslugu ili ideju – ne čekaj da te neko pita.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, izbegavaj dugove i kredite ako možeš. Danas plati gotovinom – osećaj kontrole je neprocenjiv.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, karijera raste kad ulažeš u sebe. Danas pročitaj članak ili gledaj video o veštini koja ti treba.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, finansije su ogledalo navika. Danas promeni jednu lošu naviku – rezultati dolaze brže nego što misliš.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, posao danas zahteva strpljenje. Ne žuri sa odlukama – pametan potez je bolji od brzog.",
+        f"🔮 Horoskop za karijeru i finansije\nZa {star_sign}, novac koji uštediš danas je novac koji radi za tebe sutra. Drži disciplinu – sloboda je na domaku.",
     ]
-    return random.choice(fallback)
+    
+    return random.choice(messages)
 
 
 def daily_horoscope(star_sign: Optional[str]) -> str:
