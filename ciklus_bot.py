@@ -47,45 +47,46 @@ SET_CYCLE_LENGTH, SET_PERIOD_LENGTH, SET_LAST_START, SET_STAR_SIGN = range(4)
 
 # LUTEALNA FAZA – najteža, najviše pažnje
 LUTEAL_BAD_MOOD_MSGS = [
-    "Lutealna faza radi svoje – hormoni ti spuštaju raspoloženje i bude glad. To nije slabost, to je biologija. Danas ne moraš da budeš heroina, moraš da budeš pametna.",
-    "Osecaj natečenosti i želju za čokoladom? Normalno. Progesteron radi svoje. Ne krivi sebe – krivi hormone, a onda uzmi kontrolu jednim malim potezom.",
-    "Danas ti se čini da ništa ne ide? To je lutealna faza koja ti šapuće laži. Ti si jača od toga. Jedan obrok bogat proteinom i mastima – i već si pobedila pola dana.",
-    "Glad za ugljenim hidratima nije poraz – to je telo koje traži brzu energiju. Daj mu pametne UH (ovsena kaša, slatki krompir) i ne pregovaraj sa krivicom.",
-    "Ako ti je dan težak, seti se: ovo je prolazno. Za par dana ulaziš u menstrualnu, pa folikularnu – i bićeš nezaustavljiva. Danas samo održi liniju.",
+    "⚔️ Hormoni su ti spustili pritisak? Odlično. To znači da danas pobeđuješ na BIOLOGIJU, ne na snagu volje. Budi PAMETNA, a ne HEROINA. Jedan protein, jedan dobar izbor. KRAJ PRIČE.",
+    "🍫 Želja za čokoladom je progesteron koji ti šapuće laži. NE NASEDAJ. Nema krivice, ali ima KONTROLE. Nadmudri ga – nesto zdravo cokoladno, pa onda pregovaraj.",
+    "📉 Energija na nuli? Prihvati pad. ALI, Lutealna faza ne sme biti izgovor za kolaps. Danas radiš na MINIMUMU koji te drži u igri. Minimum je uvek veći od nule. DRŽI LINIJU.",
+    "🔥 Telo traži šećer kao narkoman? Daj mu ga, ali na zdrav način. Pametni UH (batat, ovas) + vlakna. Ti biraš oružje za bolji izgled.",
+    "🌪️ Osećaš haos i težinu? Znam. Ovo je prolazna oluja, ali tvoja RIZNICA rezultata mora ostati netaknuta. Ostani dosledna SVOJOM SISTEMU. Sistem pobeđuje loše raspoloženje – uvek.",
 ]
 
 LUTEAL_OKAY_MOOD_MSGS = [
-    "U lutealnoj si, a dan je 'onako'? To je velika pobeda. Hormoni ti rade protiv, a ti držiš kontrolu. Samo jedan pametan obrok i dan ide u plus.",
-    "Nisi na 100%, ali nisi ni pala. U lutealnoj je to ogroman uspeh. Dodaj malo proteina i masti – i već si napravila razliku.",
-    "Lutealna faza ume da bude podmukla, ali ti si danas stabilna. To znači da sistem radi. Drži tempo, sutra će biti lakše.",
+    "✅  'Onako' je u lutealnoj fazi zlatna medalja. To znači da držiš KONTROLU. Sad iskoristi taj mir da pojedeš pametan obrok (protein + mast). Bez drame, bez rizika.",
+    "⏸️ Nisi na 100%, ali nisi ni pala. Odlično. Ne tražimo herojski rezultat, tražimo jednu šetnju ili 15 minuta istezanja – minimalan napor, maksimalan uticaj. Završi dan u plusu.",
+    "🧭 Lutealna faza te vuče dole, a ti si stabilna. To je znak da tvoj SISTEM radi. Sad samo nastavi po planu – nema komplikovanja, nema izmišljanja. Drži ritam i telo će ti biti zahvalno sutra.",
 ]
 
 LUTEAL_NUTRITION = [
-    "U lutealnoj glad raste – fokus na proteine i zdrave masti: jaja, avokado, losos, orasi. Manje UH, više zasićenja.",
-    "Ako te vuče na slatko – prvo protein + mast (grčki jogurt sa bademima), pa tek onda mali komad tamne čokolade.",
+    "U lutealnoj glad raste – fokus na zdrave proteine i zdrave masti: Sejk, jaja, avokado, losos... Manje UH, više zasićenja.",
+    "Ako te vuče na slatko – prvo SEJK ili uzine  (grčki jogurt sa bademima), pa tek onda mali komad čokolade.",
     "Pij puno vode – natečenost je često dehidracija u lutealnoj. Dodaj magnezijum ako imaš.",
 ]
 
 # FOLIKULARNA FAZA
 FOLIKULAR_BAD_MOOD_MSGS = [
-    "Folikularna faza obično donosi boost, ali danas si umornija? Možda san, stres ili trening. Ne brini – energija dolazi, samo joj daj prostora.",
-    "Čak i u folikularnoj može da bude težak dan. To ne znači da si izgubila momentum – znači da si čovek. Jedan dobar trening ili šetnja i bićeš nazad na putu.",
+    "🛑 Težak dan u Folikularnoj? To je ZASTOJ. Telo ti je dalo zeleno svetlo, a ti si stala. Ne krivimo te, ali ne smeš ni da traćiš energiju. Danas nema guranja PR-a, ali ima 'odrade'. Odradi bar pola treninga ili 30 min šetnje – NE PREGOVARAJ sa rutinom.",
+    "⚠️ San, stres, ili si propustila protein? Ne traži izgovore, traži REŠENJE. Folikularna faza oprašta greške, ali ne i NEAKTIVNOST. Danas je cilj da se vratiš na stazu pre nego što momentum umre. Uradi jedan mali korak koji te vraća u 🚀 Build Fazu.",
 ]
 
 FOLIKULAR_OKAY_MOOD_MSGS = [
-    "Folikularna faza, a dan 'onako'? To je znak da može bolje – i hoće. Iskoristi rast energije za jedan mali korak napred.",
-    "U folikularnoj si – uskoro ćeš leteti. Danas samo drži rutinu, sutra ćeš biti nezaustavljiva.",
+    "🔥 'Onako' u Folikularnoj je izgubljen potencijal! Ovo je prozor za tvoj najbrži napredak. Ne dozvoli da ti dan bude prosečan. Ubaci 10% više u trening ili dodaj 5g proteina u obrok. Tražimo PROGRES, ne prosek!",
+    "🚀 Uskoro ćeš leteti? NE USKORO. LETI DANAS. Telo ti signalizira rast. Drži rutinu, ali dodaj mali 'boost' – to je tvoja investicija u Ovulaciju. Nema odlaganja akcije, Build Faza se ne čeka!",
 ]
 
 # OVULACIJA
 OVULATION_BAD_MOOD_MSGS = [
-    "Ovulacija je peak, pa ako ti je dan težak – verovatno spoljni faktori (stres, san). Ne krivi sebe. Telo je spremno za akciju, glava će se uskoro pridružiti.",
+    "🚨 PEAK FAZA JE! Telo ti je na 100%, a glava je umorna? To nije ciklus, to je sabotaža (Stres? San? Kofein?). Ne gubi najjači dan u ciklusu. **ODMAH resetuj.** Lagani kardio, duboko disanje, stabilan obrok. Ne dozvoli spoljnim faktorima da ti ukradu snagu.",
+    "🚫 Ovulacija je tvoj prozor za PR (lični rekord), a ti si 'spuštenih ručica'? TO JE NEDOPUSTIVO. Ti imaš energiju. Ako je dan težak, to je mentalna barijera. Pročisti glavu. Uradi bilo šta što signalizira POBEDU (brzi trening snage). TI KONTROLIŠEŠ.",
 ]
 
 # MENSTRUALNA FAZA
 MENSTRUAL_BAD_MOOD_MSGS = [
-    "Menstrualna faza donosi umor i osetljivost – normalno je da dan bude težak. Danas je prioritet nežnost prema sebi, ne produktivnost.",
-    "Grčevi ili pad energije? Telo se čisti i regeneriše. Ne forsiraj – slušaj ga. Topao čaj, lagani pokret, odmor.",
+    "🛌 **Recovery Faza je AKTIVAN proces.** Ako je dan težak, ne padaš u krevet, već strateški biraš oporavak. Prioritet: Kvalitetan san, magnezijum i hrana bogata gvožđem. NE ŽRTVE, već FOKUS na regeneraciju. Sutra je Build Faza bliže.",
+    "💧 Grčevi i umor signaliziraju da se telo ČISTI. Ne forsiraj trening, forsiraj HIDRATACIJU i NEŽNOST. Tvoj zadatak je da mu maksimalno olakšaš izbacivanje toksina. Topao čaj i lagana joga su TVOJ TRENING danas. Isključi krivicu i uključi pamet.",
 ]
 
 # GENERALNI NUTRICIONI SAVETI (za ostale faze)
