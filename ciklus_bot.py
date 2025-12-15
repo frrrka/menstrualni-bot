@@ -58,12 +58,6 @@ LUTEAL_OKAY_MOOD_MSGS = [
     "🧭 Lutealna faza te vuče dole, a ti si stabilna. To je znak da tvoj SISTEM radi. Sad samo nastavi po planu – nema komplikovanja, nema izmišljanja. Drži ritam i telo će ti biti zahvalno sutra.",
 ]
 
-LUTEAL_NUTRITION = [
-    "U lutealnoj glad raste – fokus na zdrave proteine i zdrave masti: Sejk, jaja, avokado, losos... Manje UH, više zasićenja.",
-    "Ako te vuče na slatko – prvo SEJK ili uzine (grčki jogurt sa bademima), pa tek onda mali komad čokolade.",
-    "Pij puno vode – natečenost je često dehidracija u lutealnoj. Dodaj magnezijum ako imaš.",
-]
-
 FOLIKULAR_BAD_MOOD_MSGS = [
     "🛑 Težak dan u Folikularnoj? To je ZASTOJ. Telo ti je dalo zeleno svetlo, a ti si stala. Ne krivimo te, ali ne smeš ni da traćiš energiju. Danas nema guranja PR-a, ali ima 'odrade'. Odradi bar pola treninga ili 30 min šetnje – NE PREGOVARAJ sa rutinom.",
     "⚠️ San, stres, ili si propustila protein? Ne traži izgovore, traži REŠENJE. Folikularna faza oprašta greške, ali ne i NEAKTIVNOST. Danas je cilj da se vratiš na stazu pre nego što momentum umre. Uradi jedan mali korak koji te vraća u 🚀 Build Fazu.",
@@ -80,15 +74,44 @@ OVULATION_BAD_MOOD_MSGS = [
 ]
 
 MENSTRUAL_BAD_MOOD_MSGS = [
-    "🛌 **Recovery Faza je AKTIVAN proces.** Ako je dan težak, ne padaš u krevet, već strateški biraš oporavak. Prioritet: Kvalitetan san, magnezijum i hrana bogata gvožđem. NE ŽRTVE, već FOKUS na regeneraciju. Sutra je Build Faza bliže.",
+    "🛌 <b>Recovery Faza je AKTIVAN proces.</b> Ako je dan težak, ne padaš u krevet, već strateški biraš oporavak. Prioritet: Kvalitetan san, magnezijum i hrana bogata gvožđem. NE ŽRTVE, već FOKUS na regeneraciju. Sutra je Build Faza bliže.",
     "💧 Grčevi i umor signaliziraju da se telo ČISTI. Ne forsiraj trening, forsiraj HIDRATACIJU i NEŽNOST. Tvoj zadatak je da mu maksimalno olakšaš izbacivanje toksina. Topao čaj i lagana joga su TVOJ TRENING danas. Isključi krivicu i uključi pamet.",
 ]
 
-GENERAL_NUTRITION = [
-    "Prvo protein i povrće u obroku – stabilizuje šećer i glad.",
-    "Ne preskači obroke – redovan ritam je ključ kontrole energije.",
-    "Voda + dobar obrok pre nego što posegneš za grickalicama.",
-]
+# === HERBALIFE PREPORUKE PO FAZAMA ===
+HL_PHASE_NUTRITION = {
+    "menstrualna faza": [
+        "Protein, F1 sejk + PDM, ako hoces sladje, F1 Vanilla ili Chocolate, topli napitak uz to",
+        "Magnezijum, Herbalife vitamins and minerals za zene, uvece uz obrok",
+        "Omega 3, Herbalifeline Max uz rucak ili veceru",
+        "Caj za energiju, Herbalife caj, ali bez preterivanja, telo je u recovery modu",
+    ],
+    "folikularna faza": [
+        "Protein boost, F1 sejk + PDM, posle treninga jos jedna merica PDM ako ti fali proteina",
+        "Energija, Herbalife caj pre treninga ili ujutru, fokus i drive",
+        "Vlakna, Herbalife vlakna u sejk, stabilniji apetit i manje snackovanja",
+        "Omega 3, Herbalifeline Max dnevno, to je investicija u oporavak i hormonalni balans",
+    ],
+    "ovulacija": [
+        "Peak dan, F1 sejk + PDM, plus vlakna u sejk da ne poludis od gladi posle treninga",
+        "Caj, Herbalife caj, idealno pre posla ili pre treninga",
+        "Vitamini i minerali za zene, drzis performans stabilnim",
+        "Omega 3, Herbalifeline Max, zato sto zelis rezultat i kvalitet, ne samo kalorije",
+    ],
+    "luteinska faza": [
+        "Kad krene glad, prvo F1 sejk + PDM, to ti je reset, pa tek onda odluka o hrani",
+        "Vlakna u sejk, Herbalife vlakna, jer luteinska voli da napravi haos sa apetitom",
+        "Omega 3, Herbalifeline Max, smanjujes upale i popravis osecaj u telu",
+        "Vitamini i minerali za zene, plus magnezijum uvece ako imas, san i nervi prvo",
+        "Caj moze, ali pametno, ako si anksiozna, smanji ili prebaci ranije u danu",
+    ],
+}
+
+def hl_tip_for_phase(phase: str) -> str:
+    tips = HL_PHASE_NUTRITION.get(phase, [])
+    if not tips:
+        return "F1 sejk + PDM za protein, Herbalife caj za energiju, vlakna u sejk za stabilnu glad, Omega 3 i vitamini dnevno."
+    return random.choice(tips)
 
 def hormone_hack_block() -> str:
     return (
@@ -149,38 +172,38 @@ def daily_horoscope(star_sign: Optional[str]) -> str:
 
     return random.choice(messages)
 
-# === Akcioni blokovi po fazama ===
+# === Akcioni blokovi po fazama (HTML bold) ===
 def action_block_menstrual() -> str:
     return (
-        "🛌 *Recovery faza – Oporavak*\n\n"
-        "🏋️ **Trening:** Šetnja, istezanje ili joga.\n"
-        "🥗 **Ishrana:** Topli obroci /slatki sejkovi, gvožđe, magnezijum, zdrav kofein.\n"
-        "🎯 **Danas zadatak:** Odmor bez griže savesti.\n"
+        "🛌 <b>Recovery faza – Oporavak</b>\n\n"
+        "🏋️ <b>Trening:</b> Šetnja, istezanje ili joga.\n"
+        "🥗 <b>Ishrana:</b> Topli obroci /slatki sejkovi, gvožđe, magnezijum, zdrav kofein.\n"
+        "🎯 <b>Danas zadatak:</b> Odmor bez griže savesti.\n"
     )
 
 def action_block_follicular() -> str:
     return (
-        "🚀 *Build faza – Energija raste*\n\n"
-        "🏋️ **Trening:** Snaga ili intenzivan kardio. Guraj malo jače ovih dana.\n"
-        "🥗 **Ishrana:** Protein + UH pre treninga. Jako gorivo = jak rezultat.\n"
-        "🎯 **Danas zadatak:** Uradi trening koji si odlagala.\n"
+        "🚀 <b>Build faza – Energija raste</b>\n\n"
+        "🏋️ <b>Trening:</b> Snaga ili intenzivan kardio. Guraj malo jače ovih dana.\n"
+        "🥗 <b>Ishrana:</b> Protein + UH pre treninga. Jako gorivo = jak rezultat.\n"
+        "🎯 <b>Danas zadatak:</b> Uradi trening koji si odlagala.\n"
     )
 
 def action_block_ovulation() -> str:
     return (
-        "🔥 *Peak faza – Maksimum*\n\n"
-        "🏋️ **Trening:** Najjači trening, Snaga ili HIIT.\n"
-        "🥗 **Ishrana:** Dovoljno kalorija i UH posle treninga.\n"
-        "🎯 **Danas zadatak:** Iskoristi energiju, bez odlaganja. AKCIJA!\n"
+        "🔥 <b>Peak faza – Maksimum</b>\n\n"
+        "🏋️ <b>Trening:</b> Najjači trening, Snaga ili HIIT.\n"
+        "🥗 <b>Ishrana:</b> Dovoljno kalorija i UH posle treninga.\n"
+        "🎯 <b>Danas zadatak:</b> Iskoristi energiju, bez odlaganja. AKCIJA!\n"
     )
 
 def action_block_luteal() -> str:
     return (
-        "⚖️ *Maintain faza – Održavanje uz pametan pristup*\n\n"
-        "🏋️ **Trening:** Lakša snaga, fokus na tehniku. 30–45 min + lagana šetnja.\n"
-        "🥗 **Ishrana:** Protein u svakom obroku, dodaj zdrave masti. Manje brzih UH, Puno vlakana, zdrav kofein.\n"
-        "💊 **Bonus:** Magnezijum uveče, voda češće.\n"
-        "🎯 **Danas zadatak:** Bez grickanja.\n"
+        "⚖️ <b>Maintain faza – Održavanje uz pametan pristup</b>\n\n"
+        "🏋️ <b>Trening:</b> Lakša snaga, fokus na tehniku. 30–45 min + lagana šetnja.\n"
+        "🥗 <b>Ishrana:</b> Protein u svakom obroku, dodaj zdrave masti. Manje brzih UH, Puno vlakana, zdrav kofein.\n"
+        "💊 <b>Bonus:</b> Magnezijum uveče, voda češće.\n"
+        "🎯 <b>Danas zadatak:</b> Bez grickanja.\n"
     )
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -358,13 +381,17 @@ def build_today_overview(user: dict) -> str:
         action_block = action_block_ovulation()
     else:
         action_block = action_block_luteal()
+
+    hl_tip = hl_tip_for_phase(phase)
+
     return (
-        f"📍 Danas je {day_of_cycle}. dan ciklusa – **{phase.capitalize()}**\n\n"
+        f"📍 Danas je {day_of_cycle}. dan ciklusa – <b>{phase.capitalize()}</b>\n\n"
         f"{prefix}"
         f"{weather_part(weather_cat)}"
         f"{phase_part(phase)}"
         f"{daily_horoscope(star_sign)}\n\n"
-        f"{action_block}\n\n"
+        f"{action_block}\n"
+        f"🥤 <b>Herbalife fokus danas:</b> {hl_tip}\n\n"
         "🤍 Tvoj ekskluzivni dnevni recept za transformaciju – prilagođen samo tebi i tvom ciklusu.\n"
         "Transformations nije samo trening. To je sinhronizacija sa sobom."
     )
@@ -374,12 +401,13 @@ def build_mood_message(user: dict, mood_key: str) -> str:
     weather_cat, _ = fetch_weather_category()
     prefix = streak_prefix(user)
     header = (
-        f"🧠 Tvoj feedback za danas\nDanas je {day_of_cycle}. dan ciklusa – **{phase.capitalize()}**\n\n"
+        f"🧠 Tvoj feedback za danas\nDanas je {day_of_cycle}. dan ciklusa – <b>{phase.capitalize()}</b>\n\n"
         f"{prefix}"
         f"{weather_part(weather_cat)}"
         f"{phase_part(phase)}"
         f"{daily_horoscope(user.get('star_sign'))}\n\n"
     )
+
     if "menstrualna" in phase:
         action_block = action_block_menstrual()
     elif "folikularna" in phase:
@@ -388,45 +416,53 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         action_block = action_block_ovulation()
     else:
         action_block = action_block_luteal()
-    if "luteinska" in phase:
-        okay_msgs = LUTEAL_OKAY_MOOD_MSGS
-        bad_msgs = LUTEAL_BAD_MOOD_MSGS
-        nutrition = random.choice(LUTEAL_NUTRITION)
-    elif "folikularna" in phase:
-        okay_msgs = FOLIKULAR_OKAY_MOOD_MSGS
-        bad_msgs = FOLIKULAR_BAD_MOOD_MSGS
-        nutrition = random.choice(GENERAL_NUTRITION)
-    elif "ovulacija" in phase:
-        okay_msgs = ["U peak fazi si – čak i 'onako' dan je bolji nego kod drugih u lošijoj fazi. Iskoristi snagu."]
-        bad_msgs = OVULATION_BAD_MOOD_MSGS
-        nutrition = random.choice(GENERAL_NUTRITION)
-    else:
-        okay_msgs = ["U menstrualnoj si, a dan 'onako'? To je pobeda. Telo se regeneriše, ti držiš stabilnost."]
-        bad_msgs = MENSTRUAL_BAD_MOOD_MSGS
-        nutrition = random.choice(GENERAL_NUTRITION)
+
+    hl_tip = hl_tip_for_phase(phase)
+
     if mood_key == "sjajan":
         feedback = "🌟 Sjajan dan\nBravo. Zapamti sta je radilo i ponovi sutra – hormoni su ti saveznici danas."
         return header + feedback + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
     elif mood_key == "onako":
-        feedback = random.choice(okay_msgs)
-        extra = f"\n\n✅ Mali plus za kraj dana\nIshrana: {nutrition}"
+        feedback = random.choice(LUTEAL_OKAY_MOOD_MSGS if "luteinska" in phase else FOLIKULAR_OKAY_MOOD_MSGS if "folikularna" in phase else ["Dobar posao što držiš stabilnost."])
+        extra = f"\n\n✅ Mali plus za kraj dana\n<b>Herbalife fokus:</b> {hl_tip}"
         return header + feedback + extra + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
     else:
-        feedback = random.choice(bad_msgs)
-        extra = f"\n\n💥 Brzi reset\nIshrana: {nutrition}\n\n{hormone_hack_block()}"
+        if "luteinska" in phase:
+            feedback = random.choice(LUTEAL_BAD_MOOD_MSGS)
+        elif "folikularna" in phase:
+            feedback = random.choice(FOLIKULAR_BAD_MOOD_MSGS)
+        elif "ovulacija" in phase:
+            feedback = random.choice(OVULATION_BAD_MOOD_MSGS)
+        else:
+            feedback = random.choice(MENSTRUAL_BAD_MOOD_MSGS)
+        extra = f"\n\n💥 Brzi reset\n<b>Herbalife fokus:</b> {hl_tip}\n\n{hormone_hack_block()}"
         return header + f"{action_block}\n\n{feedback}" + extra + "\n\n🤍 Hvala ti sto si prijavila dan."
 
 def update_streak(user: dict, mood_key: str):
     today = datetime.now(TZ).date()
     last_date = user.get("last_mood_date")
+    streak = user.get("bad_mood_streak", 0)
+
     if last_date != today:
-        user["bad_mood_streak"] = 0
-    if mood_key == "sjajan":
-        user["bad_mood_streak"] = 0
-    else:
-        user["bad_mood_streak"] = user.get("bad_mood_streak", 0) + 1
+        if last_date is not None and (today - last_date).days > 1:
+            streak = 0
+
+        if mood_key == "sjajan":
+            streak = 0
+        else:
+            streak = streak + 1 if last_date == today - timedelta(days=1) else 1
+
+    user["bad_mood_streak"] = streak
     user["last_mood_date"] = today
 
+# --- TEST KOMANDA ---
+async def test22(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("OK, šaljem test dnevnu poruku sada...")
+    fake_job = type("FakeJob", (), {"chat_id": update.effective_chat.id})()
+    context.job = fake_job
+    await daily22_job(context)
+
+# --- DAILY JOB ---
 async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
@@ -435,14 +471,16 @@ async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     if not stored:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="⏰ 22:00 poruka\nNemam tvoje podatke, udji na /start i podesi ciklus.",
+            text="⏰ Večernji podsetnik\nJoš uvek nemam tvoje podatke o ciklusu. 😊\nKada podesiš, svako veče stiže personalizovana poruka!\nUdji na Podeši ciklus i krenimo! 🚀",
+            parse_mode="HTML",
         )
         return
 
     if not stored.get("last_start"):
         await context.bot.send_message(
             chat_id=chat_id,
-            text="⏰ 22:00 poruka\nJoš uvek nemam tvoje podatke o ciklusu. 😊\nKada podesiš, svako veče stiže personalizovana poruka!\nUdji na Podeši ciklus i krenimo! 🚀",
+            text="⏰ Večernji podsetnik\nJoš uvek nemam tvoje podatke o ciklusu. 😊\nKada podesiš, svako veče stiže personalizovana poruka!\nUdji na Podeši ciklus i krenimo! 🚀",
+            parse_mode="HTML",
         )
         return
 
@@ -455,16 +493,16 @@ async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=chat_id,
         text=text,
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=mood_keyboard(),
     )
 
+# --- START SA ZAKAZIVANJEM ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = ensure_user_defaults(context)
     chat_id = update.effective_chat.id
     user["seen_start"] = True
 
-    # ZAKAZUJEMO JOB ODMAH U /start
     jq = context.application.job_queue
     name = job_name_daily(chat_id)
     if jq:
@@ -484,6 +522,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard(),
     )
 
+# --- PODEŠAVANJE HANDLERI ---
 async def cancel_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Podešavanje otkazano.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
@@ -537,7 +576,6 @@ async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user["last_start"] = date_obj
     user["bad_mood_streak"] = 0
 
-    # Ponovo zakazujemo (job već postoji iz /start, ali osiguravamo)
     chat_id = update.effective_chat.id
     jq = context.application.job_queue
     name = job_name_daily(chat_id)
@@ -568,7 +606,6 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         user["star_sign"] = query.data.split("_", 1)[1]
 
-    # Ponovo zakazujemo – osvežavamo job
     jq = context.application.job_queue
     name = job_name_daily(chat_id)
     if jq:
@@ -609,7 +646,7 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         update_streak(user, mood_key)
         text = build_mood_message(user, mood_key)
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=main_menu_keyboard())
         return
     if data == "status":
         info = calc_next_dates(user)
@@ -634,7 +671,7 @@ async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "today":
         text = build_today_overview(user) + "\n\nKako ti je prosao dan? Izaberi najblizu opciju:"
-        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=mood_keyboard())
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=mood_keyboard())
         return
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -687,6 +724,7 @@ def main():
         allow_reentry=True,
     )
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("test22", test22))
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(cb_router))
     app.add_error_handler(error_handler)
