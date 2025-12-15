@@ -78,7 +78,7 @@ MENSTRUAL_BAD_MOOD_MSGS = [
     "💧 Grčevi i umor signaliziraju da se telo ČISTI. Ne forsiraj trening, forsiraj HIDRATACIJU i NEŽNOST. Tvoj zadatak je da mu maksimalno olakšaš izbacivanje toksina. Topao čaj i lagana joga su TVOJ TRENING danas. Isključi krivicu i uključi pamet.",
 ]
 
-# === HERBALIFE PREPORUKE PO FAZAMA ===
+# === HERBALIFE SAVETI PO FAZI (opšti) ===
 HL_PHASE_NUTRITION = {
     "menstrualna faza": [
         "Protein, F1 sejk + PDM, ako hoces sladje, F1 Vanilla ili Chocolate, topli napitak uz to",
@@ -112,6 +112,49 @@ def hl_tip_for_phase(phase: str) -> str:
     if not tips:
         return "F1 sejk + PDM za protein, Herbalife caj za energiju, vlakna u sejk za stabilnu glad, Omega 3 i vitamini dnevno."
     return random.choice(tips)
+
+# === HERBALIFE SAVETI PO MOOD-U (2–3 proizvoda) ===
+HL_MOOD_TIPS = {
+    "sjajan": [
+        "H24 Hydrate, voda i elektroliti, pogotovo ako si trenirala",
+        "H24 CR7 Drive, pre treninga ili tokom, ako ti treba performance",
+        "Rebuild Strength, posle treninga za oporavak",
+        "Cell Activator, ujutru, dugoročna energija i oporavak",
+        "Herbalifeline Max Omega 3, uz obrok, konsistentno svaki dan",
+    ],
+    "onako": [
+        "F1 sejk + PDM, najbrži stabilan obrok bez razmišljanja",
+        "Herbalife Vlakna u sejk, da ne krene večernje grickanje",
+        "Herbal Aloe, za stomak i rutinu unosa tečnosti",
+        "Herbalife čaj, ranije u danu za fokus, ne kasno uveče",
+        "Vitamini i minerali za žene, dnevno, bez preskakanja",
+    ],
+    "tezak": [
+        "F1 sejk + PDM odmah, da prekineš pad i napade gladi",
+        "Herbalife Vlakna, da te zasiti i smiri apetit",
+        "Herbalifeline Max Omega 3, smanjuje upalni osećaj i podiže kvalitet oporavka",
+        "Magnezijum uveče, ako koristiš, san i nervi prvo",
+        "Herbal Aloe, stomak i nadutost često prave lažan stres",
+    ],
+    "stresan": [
+        "F1 sejk + PDM, stabilizuje šećer i glavu",
+        "Herbalife čaj samo ranije, ako si napeta, nemoj kasno",
+        "Herbalifeline Max Omega 3, nervni sistem i oporavak",
+        "Vitamini i minerali za žene, podrška u periodima stresa",
+        "Herbalife Vlakna, da presečeš emocionalno snackovanje",
+    ],
+}
+
+def hl_mood_block(mood_key: str, phase: str) -> str:
+    mood_tips = HL_MOOD_TIPS.get(mood_key, [])
+    picks = random.sample(mood_tips, k=min(3, len(mood_tips))) if mood_tips else []
+    phase_tip = hl_tip_for_phase(phase)
+    extra = ""
+    if picks:
+        extra = "🥤 <b>Herbalife fokus po raspoloženju:</b>\n" + "\n".join([f"• {p}" for p in picks])
+    if phase_tip:
+        extra = (extra + "\n\n" if extra else "") + f"🧠 <b>Herbalife fokus po fazi:</b> {phase_tip}"
+    return extra
 
 def hormone_hack_block() -> str:
     return (
@@ -382,7 +425,7 @@ def build_today_overview(user: dict) -> str:
     else:
         action_block = action_block_luteal()
 
-    hl_tip = hl_tip_for_phase(phase)
+    hl_block = hl_mood_block("onako", phase)
 
     return (
         f"📍 Danas je {day_of_cycle}. dan ciklusa – <b>{phase.capitalize()}</b>\n\n"
@@ -390,8 +433,8 @@ def build_today_overview(user: dict) -> str:
         f"{weather_part(weather_cat)}"
         f"{phase_part(phase)}"
         f"{daily_horoscope(star_sign)}\n\n"
-        f"{action_block}\n"
-        f"🥤 <b>Herbalife fokus danas:</b> {hl_tip}\n\n"
+        f"{action_block}\n\n"
+        f"{hl_block}\n\n"
         "🤍 Tvoj ekskluzivni dnevni recept za transformaciju – prilagođen samo tebi i tvom ciklusu.\n"
         "Transformations nije samo trening. To je sinhronizacija sa sobom."
     )
@@ -417,14 +460,14 @@ def build_mood_message(user: dict, mood_key: str) -> str:
     else:
         action_block = action_block_luteal()
 
-    hl_tip = hl_tip_for_phase(phase)
+    hl_block = hl_mood_block(mood_key, phase)
 
     if mood_key == "sjajan":
         feedback = "🌟 Sjajan dan\nBravo. Zapamti sta je radilo i ponovi sutra – hormoni su ti saveznici danas."
-        return header + feedback + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
+        return header + feedback + f"\n\n{action_block}\n\n{hl_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
     elif mood_key == "onako":
         feedback = random.choice(LUTEAL_OKAY_MOOD_MSGS if "luteinska" in phase else FOLIKULAR_OKAY_MOOD_MSGS if "folikularna" in phase else ["Dobar posao što držiš stabilnost."])
-        extra = f"\n\n✅ Mali plus za kraj dana\n<b>Herbalife fokus:</b> {hl_tip}"
+        extra = f"\n\n✅ Mali plus za kraj dana\n{hl_block}"
         return header + feedback + extra + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
     else:
         if "luteinska" in phase:
@@ -435,7 +478,7 @@ def build_mood_message(user: dict, mood_key: str) -> str:
             feedback = random.choice(OVULATION_BAD_MOOD_MSGS)
         else:
             feedback = random.choice(MENSTRUAL_BAD_MOOD_MSGS)
-        extra = f"\n\n💥 Brzi reset\n<b>Herbalife fokus:</b> {hl_tip}\n\n{hormone_hack_block()}"
+        extra = f"\n\n💥 Brzi reset\n{hl_block}\n\n{hormone_hack_block()}"
         return header + f"{action_block}\n\n{feedback}" + extra + "\n\n🤍 Hvala ti sto si prijavila dan."
 
 def update_streak(user: dict, mood_key: str):
