@@ -211,6 +211,7 @@ def ensure_user_defaults(context: ContextTypes.DEFAULT_TYPE) -> dict:
     data.setdefault("last_mood_date", None)
     return data
 
+# --- TASTATURE ---
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -247,6 +248,7 @@ def sign_keyboard() -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("Preskoči", callback_data="sign_skip")])
     return InlineKeyboardMarkup(rows)
 
+# --- KALKULATORI I UTILITY FUNKCIJE ---
 def parse_date(text: str):
     t = text.strip()
     for fmt in ["%d.%m.%Y", "%d.%m.%Y."]:
@@ -378,7 +380,6 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         f"{phase_part(phase)}"
         f"{daily_horoscope(user.get('star_sign'))}\n\n"
     )
-    # Akcioni blok
     if "menstrualna" in phase:
         action_block = action_block_menstrual()
     elif "folikularna" in phase:
@@ -387,7 +388,6 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         action_block = action_block_ovulation()
     else:
         action_block = action_block_luteal()
-    # Poruke po fazi
     if "luteinska" in phase:
         okay_msgs = LUTEAL_OKAY_MOOD_MSGS
         bad_msgs = LUTEAL_BAD_MOOD_MSGS
@@ -411,7 +411,7 @@ def build_mood_message(user: dict, mood_key: str) -> str:
         feedback = random.choice(okay_msgs)
         extra = f"\n\n✅ Mali plus za kraj dana\nIshrana: {nutrition}"
         return header + feedback + extra + f"\n\n{action_block}" + "\n\n🤍 Hvala ti sto si prijavila dan."
-    else: # težak ili stresan
+    else:
         feedback = random.choice(bad_msgs)
         extra = f"\n\n💥 Brzi reset\nIshrana: {nutrition}\n\n{hormone_hack_block()}"
         return header + f"{action_block}\n\n{feedback}" + extra + "\n\n🤍 Hvala ti sto si prijavila dan."
@@ -431,18 +431,27 @@ async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
     stored = context.application.chat_data.get(chat_id)
+
     if not stored:
         await context.bot.send_message(
             chat_id=chat_id,
             text="⏰ 22:00 poruka\nNemam tvoje podatke, udji na /start i podesi ciklus.",
         )
         return
+
+    if not stored.get("last_start"):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏰ 22:00 poruka\nJoš uvek nemam tvoje podatke o ciklusu. 😊\nKada podesiš, svako veče stiže personalizovana poruka!\nUdji na Podeši ciklus i krenimo! 🚀",
+        )
+        return
+
     overview = build_today_overview(stored)
     text = (
-        "⏰ Dnevna poruka 22:00\n\n"
         f"{overview}\n\n"
         "Kako ti je prosao dan? Izaberi najblizu opciju:"
     )
+
     await context.bot.send_message(
         chat_id=chat_id,
         text=text,
@@ -454,18 +463,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = ensure_user_defaults(context)
     chat_id = update.effective_chat.id
     user["seen_start"] = True
+
+    # ZAKAZUJEMO JOB ODMAH U /start
     jq = context.application.job_queue
     name = job_name_daily(chat_id)
-    if jq is not None and not jq.get_jobs_by_name(name):
+    if jq:
+        for j in jq.get_jobs_by_name(name):
+            j.schedule_removal()
         jq.run_daily(
             daily22_job,
             time=dtime(hour=22, minute=0, tzinfo=TZ),
             name=name,
             chat_id=chat_id,
         )
+
     await update.message.reply_text(
         "Hej, ja sam bot za ciklus, vreme, horoskop i raspolozenje. 🤖🩸\n\n"
-        "Svako vece u 22:00 dobijas poruku automatski.\n"
+        "Svako veče u 22:00 stiže dnevna poruka automatski.\n"
         "Izaberi opciju:",
         reply_markup=main_menu_keyboard(),
     )
@@ -522,6 +536,21 @@ async def set_last_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SET_LAST_START
     user["last_start"] = date_obj
     user["bad_mood_streak"] = 0
+
+    # Ponovo zakazujemo (job već postoji iz /start, ali osiguravamo)
+    chat_id = update.effective_chat.id
+    jq = context.application.job_queue
+    name = job_name_daily(chat_id)
+    if jq:
+        for j in jq.get_jobs_by_name(name):
+            j.schedule_removal()
+        jq.run_daily(
+            daily22_job,
+            time=dtime(hour=22, minute=0, tzinfo=TZ),
+            name=name,
+            chat_id=chat_id,
+        )
+
     await update.message.reply_text(
         "Zabeleženo. Sada izaberi horoskopski znak ili preskoči.",
         reply_markup=sign_keyboard(),
@@ -532,10 +561,26 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = ensure_user_defaults(context)
+    chat_id = update.effective_chat.id
+
     if query.data == "sign_skip":
         user["star_sign"] = None
     else:
         user["star_sign"] = query.data.split("_", 1)[1]
+
+    # Ponovo zakazujemo – osvežavamo job
+    jq = context.application.job_queue
+    name = job_name_daily(chat_id)
+    if jq:
+        for j in jq.get_jobs_by_name(name):
+            j.schedule_removal()
+        jq.run_daily(
+            daily22_job,
+            time=dtime(hour=22, minute=0, tzinfo=TZ),
+            name=name,
+            chat_id=chat_id,
+        )
+
     info = calc_next_dates(user)
     sign_txt = user["star_sign"] if user["star_sign"] else "nije podešeno"
     text = "✅ Podešavanje završeno!\n\n"
@@ -545,7 +590,7 @@ async def set_star_sign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Sledeća menstruacija oko: {info['next_start'].strftime('%d.%m.%Y.')}\n"
             f"Plodni dani: {info['fertile_start'].strftime('%d.%m.%Y.')} – {info['fertile_end'].strftime('%d.%m.%Y.')}\n\n"
         )
-    text += "Svako veče u 22:00 stiže dnevna poruka automatski."
+    text += "Svako veče u 22:00 stiže dnevna poruka automatski. 🚀"
     await query.edit_message_text(text, reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
