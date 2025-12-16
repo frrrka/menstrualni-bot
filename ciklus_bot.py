@@ -1,7 +1,5 @@
 import logging
 import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -31,7 +29,6 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN env variable nije podesena")
 
-PORT = int(os.getenv("PORT", "10000"))
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 DEFAULT_CITY = os.getenv("DEFAULT_CITY", "Belgrade,RS")
 PERSISTENCE_PATH = os.getenv("PERSISTENCE_PATH", "bot_data.pkl")
@@ -249,20 +246,6 @@ def action_block_luteal() -> str:
         "🎯 <b>Danas zadatak:</b> Bez grickanja.\n"
     )
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-def start_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    print(f"[health] Listening on port {PORT}")
-    server.serve_forever()
-
 def job_name_daily(chat_id: int) -> str:
     return f"daily22_{chat_id}"
 
@@ -387,7 +370,7 @@ def weather_part(weather_cat: Optional[str]) -> str:
     if weather_cat == "suncano":
         return "☀️ Vremenski utisak\nSunce cesto podigne energiju, ali ne znaci da moras da guras na maksimum.\n\n"
     if weather_cat == "kisovito":
-        return "🌧️ Vremenski utisak\nKisni dan ume da spusti raspolozenje i fokus, normalno je ako si usporenija.\n\n"
+        return "🌧️ Vremenski utisak\nKisni dan ume da spusti raspoloženje i fokus, normalno je ako si usporenija.\n\n"
     if weather_cat == "oblacno":
         return "☁️ Vremenski utisak\nOblacno cesto donese tihi umor, prilagodi tempo, bez drame.\n\n"
     return ""
@@ -498,26 +481,68 @@ def update_streak(user: dict, mood_key: str):
     user["bad_mood_streak"] = streak
     user["last_mood_date"] = today
 
-# --- TEST KOMANDA ---
+# --- DIJAGNOSTIČKE KOMANDE ---
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now_local = datetime.now(TZ)
+    await update.message.reply_text(f"✅ PONG, Beograd vreme: {now_local.strftime('%d.%m.%Y %H:%M:%S')}")
+
+async def jobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    jq = context.application.job_queue
+    name = job_name_daily(chat_id)
+    jobs_list = jq.get_jobs_by_name(name) if jq else []
+    await update.message.reply_text(f"📌 Jobs za chat {chat_id}, found: {len(jobs_list)}")
+
+async def testin1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    jq = context.application.job_queue
+    if not jq:
+        await update.message.reply_text("Nema job_queue.")
+        return
+
+    async def one_shot(ctx: ContextTypes.DEFAULT_TYPE):
+        await ctx.bot.send_message(chat_id=chat_id, text="✅ JobQueue radi, ovo je poruka posle 60s")
+
+    jq.run_once(one_shot, when=60, name=f"oneshot_{chat_id}")
+    await update.message.reply_text("OK, šaljem test za 60 sekundi.")
+
+async def nextrun(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    jq = context.application.job_queue
+    name = job_name_daily(chat_id)
+    jobs_list = jq.get_jobs_by_name(name) if jq else []
+    if not jobs_list:
+        await update.message.reply_text("Nema daily job-a za ovaj chat, uradi /start.")
+        return
+
+    j = jobs_list[0]
+
+    next_run = None
+    if hasattr(j, "next_run_time"):
+        next_run = j.next_run_time
+    elif hasattr(j, "job") and hasattr(j.job, "next_run_time"):
+        next_run = j.job.next_run_time
+
+    if next_run is None:
+        await update.message.reply_text("Ne mogu da pročitam next_run_time.")
+    else:
+        await update.message.reply_text(f"Sledeći run je: {next_run}")
+
 async def test22(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("OK, šaljem test dnevnu poruku sada...")
-    fake_job = type("FakeJob", (), {"chat_id": update.effective_chat.id})()
-    context.job = fake_job
+    class J: pass
+    j = J()
+    j.chat_id = update.effective_chat.id
+    context.job = j
     await daily22_job(context)
 
 # --- DAILY JOB ---
 async def daily22_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
-    stored = context.application.chat_data.get(chat_id)
-
+    stored = context.application.chat_data.get(chat_id, {})
     if not stored:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="⏰ Večernji podsetnik\nJoš uvek nemam tvoje podatke o ciklusu. 😊\nKada podesiš, svako veče stiže personalizovana poruka!\nUdji na Podeši ciklus i krenimo! 🚀",
-            parse_mode="HTML",
-        )
-        return
+        stored = {}
 
     if not stored.get("last_start"):
         await context.bot.send_message(
@@ -739,12 +764,13 @@ async def post_init(application):
                 name=name,
                 chat_id=chat_id,
             )
+            logger.info(f"Rescheduled daily job for chat_id={chat_id}")
         except Exception as e:
             logger.exception(f"post_init reschedule greska {e}")
 
 def main():
-    threading.Thread(target=start_health_server, daemon=True).start()
     persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
+
     app = (
         ApplicationBuilder()
         .token(TOKEN)
@@ -752,6 +778,7 @@ def main():
         .post_init(post_init)
         .build()
     )
+
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(setup_entry, pattern="^setup$")],
         states={
@@ -766,13 +793,32 @@ def main():
         ],
         allow_reentry=True,
     )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test22", test22))
+    app.add_handler(CommandHandler("ping", ping))
+    app.add_handler(CommandHandler("jobs", jobs))
+    app.add_handler(CommandHandler("testin1", testin1))
+    app.add_handler(CommandHandler("nextrun", nextrun))
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(cb_router))
     app.add_error_handler(error_handler)
-    print("[bot] Starting Telegram bot...")
-    app.run_polling()
+
+    webhook_base = os.getenv("WEBHOOK_BASE_URL")
+    if not webhook_base:
+        raise RuntimeError("WEBHOOK_BASE_URL env variable nije podesena (npr https://tvoj-servis.onrender.com)")
+
+    port = int(os.getenv("PORT", "10000"))
+
+    print("[bot] Starting Telegram bot via WEBHOOK...")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=TOKEN,
+        webhook_url=f"{webhook_base}/{TOKEN}",
+        allowed_updates=Update.ALL_TYPES,
+    )
 
 if __name__ == "__main__":
     main()
